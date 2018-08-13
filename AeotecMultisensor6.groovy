@@ -659,7 +659,7 @@ def version(){
 
 def updatecheck(){
     setVersion()
-    def paramsUD = [uri: "http://h-qk.com/versions.json"]
+    def paramsUD = [uri: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/versions.json"]
        try {
 		httpGet(paramsUD) { respUD ->
 			//  log.info " Version Checking - Response Data: ${respUD.data}"   // Debug Code 
