@@ -659,8 +659,8 @@ def version(){
 
 def updatecheck(){
     setVersion()
-    def paramsUD = [uri: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/versions.json"]
-       try {
+     def paramsUD = [uri: "https://hubitatcommunity.github.io/AeotecMultiSensor6/versions.json"]
+     try {
 		httpGet(paramsUD) { respUD ->
 			//  log.info " Version Checking - Response Data: ${respUD.data}"   // Debug Code 
 			def copyNow = (respUD.data.copyright)
