@@ -1,19 +1,19 @@
 {
-	"Comment": "Last updated: 05/08/2018",
+	"Comment": "Last updated: 11/31/2018",
 	"copyright": " &#9400; 2018 cSteele",
 	"author":"cSteele",
 	"versions": {
 		"Application": {
 		},
 		"Driver": {
-			"AeotecMultiSensor6": "1.2"
+			"AeotecMultiSensor6": "1.3"
 		},
 
 		"UpdateInfo": {
 			"Application": {
 			},
 			"Driver": {
-				"AeotecMultiSensor6": "Updated: 08/08/2018"
+				"AeotecMultiSensor6": "Updated: 11/31/2018"
 			}
 		}
 	}
