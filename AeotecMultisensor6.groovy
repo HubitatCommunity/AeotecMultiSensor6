@@ -11,6 +11,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.3  Restored logDebug as default logging is too much. cSteele
  *         v1.2  Merged Chuckles updates
  *         v1.1d Added remote version checking ** Cobra (CobraVmax) for his original version check code
  * csteele v1.1c converted to Hubitat.
@@ -56,7 +57,7 @@
 */
 
 metadata {
-    definition (name: "AeotecMultisensor6", namespace: "chuckles", author: "Chuckles") {
+    definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele") {
         capability "Motion Sensor"
         capability "Temperature Measurement"
         capability "Relative Humidity Measurement"
@@ -75,6 +76,7 @@ metadata {
         attribute  "DriverVersion", "string"
         attribute  "DriverAuthor", "string"
         attribute  "DriverStatus", "string"
+        attribute  "DriverUpdate", "string"
 
         fingerprint deviceId: "0x2101", inClusters: "0x5E,0x86,0x72,0x59,0x85,0x73,0x71,0x84,0x80,0x30,0x31,0x70,0x7A", outClusters: "0x5A"
     }
@@ -101,14 +103,14 @@ metadata {
             input "humidOffset", "number", title: "Humidity Offset/Adjustment -50 to +50 in percent?", range: "-10..10", description: "If your humidity is inaccurate this will offset/adjust it by this percent.", defaultValue: 0, required: false, displayDuringSetup: true
             input "luxOffset", "number", title: "Luminance Offset/Adjustment -10 to +10 in LUX?", range: "-10..10", description: "If your luminance is inaccurate this will offset/adjust it by this percent.", defaultValue: 0, required: false, displayDuringSetup: true
         }
+        input name: "debugOutput", type: "bool", title: "Enable debug logging?", defaultValue: true
     }
 }
 
 // App Version   *********************************************************************************
 def setVersion(){
-    state.version = "1.2"
-    state.InternalName = "AeotecMultisensor6"
-    state.Type = "Driver"
+    state.Version = "1.3"
+    state.InternalName = "AeotecMultiSensor6"
     
     sendEvent(name: "DriverAuthor", value: "cSteele", isStateChange: true)
     sendEvent(name: "DriverVersion", value: state.version, isStateChange: true)
@@ -116,8 +118,9 @@ def setVersion(){
 }
 
 def updated() {
-    log.debug "In Updated with settings: ${settings}"
-    log.debug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
+    logDebug "In Updated with settings: ${settings}"
+    logDebug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
+    if (logDebug) runIn(1800,logsOff)
     version()
 
     // Check for any null settings and change them to default values
@@ -139,13 +142,13 @@ def updated() {
 
     if (motionSensitivity < 0)
     {
-        log.debug "Illegal motion sensitivity ... resetting to 0!"
+        logDebug "Illegal motion sensitivity ... resetting to 0!"
         motionSensitivity = 0
     }
 
     if (motionSensitivity > 5)
     {
-        log.debug "Illegal motion sensitivity ... resetting to 5!"
+        logDebug "Illegal motion sensitivity ... resetting to 5!"
         motionSensitivity = 5
     }
 
@@ -153,38 +156,38 @@ def updated() {
     if (tempOffset < -128)
     {
         tempOffset = -128
-        log.debug "Temperature Offset too low... resetting to -128 (-12.8 degrees)0"
+        logDebug "Temperature Offset too low... resetting to -128 (-12.8 degrees)0"
     }
 
     if (tempOffset > 127)
     {
         tempOffset = 127
-        log.debug "Temperature Offset too high ... resetting to 127 (+12.7 degrees)"
+        logDebug "Temperature Offset too high ... resetting to 127 (+12.7 degrees)"
     }
 
     // fix humidity offset
     if (humidOffset < -50)
     {
         humidOffset = -50
-        log.debug "Humidity Offset too low... resetting to -50%"
+        logDebug "Humidity Offset too low... resetting to -50%"
     }
 
     if (humidOffset > 50)
     {
         humidOffset = 50
-        log.debug "Humidity Adjusment too high ... resetting to +50%"
+        logDebug "Humidity Adjusment too high ... resetting to +50%"
     }
 
     if (luxOffset < -1000)
     {
         luxOffset = -1000
-        log.debug "Luminance Offset too low ... resetting to -1000LUX"
+        logDebug "Luminance Offset too low ... resetting to -1000LUX"
     }
 
     if (luxOffset > 1000)
     {
         luxOffset = 1000
-        log.debug "Luminance Offset too high ... resetting to +1000LUX"
+        logDebug "Luminance Offset too high ... resetting to +1000LUX"
     }
 
 
@@ -200,6 +203,11 @@ def updated() {
         response(commands(request))
     }
     return(configure())
+}
+
+def logsOff(){
+    log.warn "debug logging disabled..."
+    device.updateSetting("debugOutput",[value:"false",type:"bool"])
 }
 
 def parse(String description) {
@@ -226,10 +234,10 @@ def zwaveEvent(hubitat.zwave.commands.wakeupv1.WakeUpNotification cmd) {
     def result = [createEvent(descriptionText: "${device.displayName} woke up", isStateChange: false)]
     def cmds = []
     if (!isConfigured()) {
-        log.debug("late configure")
+        logDebug("late configure")
         result << response(configure())
     } else {
-        //log.debug("Device has been configured sending >> wakeUpNoMoreInformation()")
+        //logDebug("Device has been configured sending >> wakeUpNoMoreInformation()")
         cmds << zwave.wakeUpV1.wakeUpNoMoreInformation().format()
         result << response(cmds)
     }
@@ -239,7 +247,7 @@ def zwaveEvent(hubitat.zwave.commands.wakeupv1.WakeUpNotification cmd) {
 def zwaveEvent(hubitat.zwave.commands.securityv1.SecurityMessageEncapsulation cmd) {
     def encapsulatedCommand = cmd.encapsulatedCommand([0x31: 5, 0x30: 1, 0x70: 1, 0x72: 1, 0x84: 1])
     state.sec = 1
-    log.debug "encapsulated: ${encapsulatedCommand}"
+    logDebug "encapsulated: ${encapsulatedCommand}"
     if (encapsulatedCommand) {
         zwaveEvent(encapsulatedCommand)
     } else {
@@ -261,11 +269,11 @@ def zwaveEvent(hubitat.zwave.commands.securityv1.NetworkKeyVerify cmd) {
 }
 
 def zwaveEvent(hubitat.zwave.commands.manufacturerspecificv1.ManufacturerSpecificReport cmd) {
-    log.debug "ManufacturerSpecificReport cmd = $cmd"
+    logDebug "ManufacturerSpecificReport cmd = $cmd"
 
-    log.debug "manufacturerId:   ${cmd.manufacturerId}"
-    log.debug "manufacturerName: ${cmd.manufacturerName}"
-    log.debug "productId:        ${cmd.productId}"
+    logDebug "manufacturerId:   ${cmd.manufacturerId}"
+    logDebug "manufacturerName: ${cmd.manufacturerName}"
+    logDebug "productId:        ${cmd.productId}"
     def model = ""   // We'll decode the specific model for the log, but we don't currently use this info
     switch(cmd.productTypeId >> 8) {
         case 0: model = "EU"
@@ -280,14 +288,14 @@ def zwaveEvent(hubitat.zwave.commands.manufacturerspecificv1.ManufacturerSpecifi
                 break
         default: model = "unknown"
     }
-    log.debug "model:            ${model}"
-    log.debug "productTypeId:    ${cmd.productTypeId}"
+    logDebug "model:            ${model}"
+    logDebug "productTypeId:    ${cmd.productTypeId}"
     def msr = String.format("%04X-%04X-%04X", cmd.manufacturerId, cmd.productTypeId, cmd.productId)
     updateDataValue("MSR", msr)
 }
 
 def zwaveEvent(hubitat.zwave.commands.batteryv1.BatteryReport cmd) {
-    log.debug "In BatteryReport"
+    logDebug "In BatteryReport"
     def result = []
     def map = [ name: "battery", unit: "%" ]
     if (cmd.batteryLevel == 0xFF) {
@@ -302,12 +310,12 @@ def zwaveEvent(hubitat.zwave.commands.batteryv1.BatteryReport cmd) {
 }
 
 def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport cmd){
-    log.debug "In multi level report cmd = $cmd"
+    logDebug "In multi level report cmd = $cmd"
 
     def map = [:]
     switch (cmd.sensorType) {
         case 1:
-            log.debug "raw temp = $cmd.scaledSensorValue"
+            logDebug "raw temp = $cmd.scaledSensorValue"
 
             def now = new Date()
             def tf = new java.text.SimpleDateFormat("dd-MMM-yyyy h:mm a")
@@ -315,31 +323,31 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
             def newtime = "${tf.format(now)}" as String
             sendEvent(name: "lastUpdate", value: newtime, descriptionText: "Last Update: $newtime ${tf.getTimeZone()}")
 
-            log.debug "scaled sensor value = $cmd.scaledSensorValue  scale = $cmd.scale  precision = $cmd.precision"
+            logDebug "scaled sensor value = $cmd.scaledSensorValue  scale = $cmd.scale  precision = $cmd.precision"
 
             // Convert temperature (if needed) to the system's configured temperature scale
             def finalval = convertTemperatureIfNeeded(cmd.scaledSensorValue, cmd.scale == 1 ? "F" : "C", cmd.precision)
 
-            log.debug "finalval = $finalval"
+            logDebug "finalval = $finalval"
 
             map.value = finalval
             map.unit = getTemperatureScale()
             map.name = "temperature"
             break
         case 3:
-            log.debug "raw illuminance = $cmd.scaledSensorValue"
+            logDebug "raw illuminance = $cmd.scaledSensorValue"
             map.name = "illuminance"
             map.value = cmd.scaledSensorValue.toInteger()
             map.unit = "lux"
             break
         case 5:
-            log.debug "raw humidity = $cmd.scaledSensorValue"
+            logDebug "raw humidity = $cmd.scaledSensorValue"
             map.value = cmd.scaledSensorValue.toInteger()
             map.unit = "%"
             map.name = "humidity"
             break
         case 27:
-            log.debug "raw uv index = $cmd.scaledSensorValue"
+            logDebug "raw uv index = $cmd.scaledSensorValue"
             map.name = "ultravioletIndex"
             map.value = cmd.scaledSensorValue.toInteger()
             break
@@ -352,11 +360,11 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
 def motionEvent(value) {
     def map = [name: "motion"]
     if (value) {
-        log.debug "motion active"
+        logDebug "motion active"
         map.value = "active"
         map.descriptionText = "$device.displayName detected motion"
     } else {
-        log.debug "motion inactive"
+        logDebug "motion inactive"
         map.value = "inactive"
         map.descriptionText = "$device.displayName motion has stopped"
     }
@@ -399,14 +407,14 @@ def zwaveEvent(hubitat.zwave.commands.notificationv3.NotificationReport cmd) {
 }
 
 def zwaveEvent(hubitat.zwave.commands.configurationv1.ConfigurationReport cmd) {
-    log.debug "---CONFIGURATION REPORT V1--- ${device.displayName} parameter ${cmd.parameterNumber} with a byte size of ${cmd.size} is set to ${cmd.configurationValue}"
+    logDebug "---CONFIGURATION REPORT V1--- ${device.displayName} parameter ${cmd.parameterNumber} with a byte size of ${cmd.size} is set to ${cmd.configurationValue}"
 
     def result = []
     def value
     if (cmd.parameterNumber == 9 && cmd.configurationValue[0] == 0) {
         value = "dc"
         if (!isConfigured()) {
-            log.debug("ConfigurationReport: configuring device")
+            logDebug("ConfigurationReport: configuring device")
             result << response(configure())
         }
         result << createEvent(name: "powerSource", value: value, displayed: false)
@@ -422,7 +430,7 @@ def zwaveEvent(hubitat.zwave.commands.configurationv1.ConfigurationReport cmd) {
 }
 
 def zwaveEvent(hubitat.zwave.Command cmd) {
-    log.debug "General zwaveEvent cmd: ${cmd}"
+    logDebug "General zwaveEvent cmd: ${cmd}"
     createEvent(descriptionText: cmd.toString(), isStateChange: false)
 }
 
@@ -444,46 +452,46 @@ def configure() {
         tempChangeAmount = 2
 
     if (motionSensitivity < 0) {
-        log.debug "Motion sensitivity too low ... resetting to 0"
+        logDebug "Motion sensitivity too low ... resetting to 0"
         motionSensitivity = 0
     } else if (motionSensitivity > 5) {
-        log.debug "Motion sensitivity too high ... resetting to 5"
+        logDebug "Motion sensitivity too high ... resetting to 5"
         motionSensitivity = 5
     }
 
     // fix temp offset
     if (tempOffset < -10) {
         tempOffset = -10
-        log.debug "Temperature calibration too low... resetting to -10"
+        logDebug "Temperature calibration too low... resetting to -10"
     } else if (tempOffset > 10) {
         tempOffset = 10
-        log.debug "Temperature calibration too high ... resetting to 10"
+        logDebug "Temperature calibration too high ... resetting to 10"
     }
 
     // fix humidity offset
     if (humidOffset < -50) {
         humidOffset = -50
-        log.debug "Humidity calibration too low... resetting to -50"
+        logDebug "Humidity calibration too low... resetting to -50"
     } else if (humidOffset > 50) {
         humidOffset = 50
-        log.debug "Humidity calibration too high ... resetting to 50"
+        logDebug "Humidity calibration too high ... resetting to 50"
     }
 
     if (luxOffset < -1000) {
         luxOffset = -1000
-        log.debug "Luminance calibration too low ... resetting to -1000"
+        logDebug "Luminance calibration too low ... resetting to -1000"
     } else if (luxOffset > 1000) {
         luxOffset = 1000
-        log.debug "Luminance calibration too high ... resetting to 1000"
+        logDebug "Luminance calibration too high ... resetting to 1000"
     }
 
-    log.debug "In configure: Report Interval = $settings.reportInterval"
-    log.debug "Motion Delay Time = $settings.motionDelayTime"
-    log.debug "Motion Sensitivity = $settings.motionSensitivity"
-    log.debug "Temperature adjust = $settings.TempOffset"
-    log.debug "Humidity adjust = $settings.HumidOffset"
-    log.debug "Temp Scale = $settings.tempScale"
-    log.debug "Min Temp change for reporting = $settings.TempChangeAmount"
+    logDebug "In configure: Report Interval = $settings.reportInterval"
+    logDebug "Motion Delay Time = $settings.motionDelayTime"
+    logDebug "Motion Sensitivity = $settings.motionSensitivity"
+    logDebug "Temperature adjust = $settings.TempOffset"
+    logDebug "Humidity adjust = $settings.HumidOffset"
+    logDebug "Temp Scale = $settings.tempScale"
+    logDebug "Min Temp change for reporting = $settings.TempChangeAmount"
 
     def now = new Date()
     def tf = new java.text.SimpleDateFormat("dd-MMM-yyyy h:mm a")
@@ -498,13 +506,13 @@ def configure() {
         waketime = timeOptionValueMap[settings.reportInterval]
     else waketime = 300
 
-    log.debug "wake time reset to $waketime"
+    logDebug "wake time reset to $waketime"
 
-    log.debug "Current firmware: $device.currentFirmware"
+    logDebug "Current firmware: $device.currentFirmware"
 
     // Retrieve local temperature scale: "C" = Celsius, "F" = Fahrenheit
     // Convert to a value of 1 or 2 as used by the device to select the scale
-    log.debug "Location temperature scale: ${location.getTemperatureScale()}"
+    logDebug "Location temperature scale: ${location.getTemperatureScale()}"
     byte tempScaleByte = (location.getTemperatureScale() == "C" ? 1 : 2)
 
     def request = [
@@ -572,7 +580,7 @@ def configure() {
 }
 
 def refresh() {
-    log.debug "in refresh"
+    logDebug "in refresh"
 
     return commands([
             zwave.versionV1.versionGet(),                                // Retrieve version info (includes firmware version)
@@ -615,10 +623,10 @@ private isConfigured() {
 
 private command(hubitat.zwave.Command cmd) {
     if (state.sec) {
-        log.debug "Sending secure Z-wave command: ${cmd.toString()}"
+        logDebug "Sending secure Z-wave command: ${cmd.toString()}"
         return zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
     } else {
-        log.debug "Sending Z-wave command: ${cmd.toString()}"
+        logDebug "Sending Z-wave command: ${cmd.toString()}"
         return cmd.format()
     }
 }
@@ -630,24 +638,30 @@ private commands(commands, delay=1000) {
 
 
 def zwaveEvent(hubitat.zwave.commands.versionv1.VersionCommandClassReport cmd) {
-    log.debug "in version command class report"
+    logDebug "in version command class report"
     //if (state.debug)
-    log.debug "---VERSION COMMAND CLASS REPORT V1--- ${device.displayName} has version: ${cmd.commandClassVersion} for command class ${cmd.requestedCommandClass} - payload: ${cmd.payload}"
+    logDebug "---VERSION COMMAND CLASS REPORT V1--- ${device.displayName} has version: ${cmd.commandClassVersion} for command class ${cmd.requestedCommandClass} - payload: ${cmd.payload}"
 }
 
 def zwaveEvent(hubitat.zwave.commands.versionv1.VersionReport cmd) {
-    log.debug "in version report"
+    logDebug "in version report"
     // SubVersion is in 1/100ths so that 1.01 < 1.08 < 1.10, etc.
     BigDecimal fw = cmd.applicationVersion + (cmd.applicationSubVersion / 100)
     state.firmware = fw
-    log.debug "---VERSION REPORT V1--- ${device.displayName} is running firmware version: ${String.format("%.2f",fw)}, Z-Wave version: ${cmd.zWaveProtocolVersion}.${cmd.zWaveProtocolSubVersion}"
+    logDebug "---VERSION REPORT V1--- ${device.displayName} is running firmware version: ${String.format("%.2f",fw)}, Z-Wave version: ${cmd.zWaveProtocolVersion}.${cmd.zWaveProtocolSubVersion}"
     if(fw < 1.10)
         log.warn "--- WARNING: Device handler expects devices to have firmware 1.10 or later"
 }
 
 def zwaveEvent(hubitat.zwave.commands.firmwareupdatemdv2.FirmwareMdReport cmd) {
     // NOTE: This command class is not yet implemented by Hubitat...
-    log.debug "---FIRMWARE METADATA REPORT V2 ${device.displayName}   manufacturerId: ${cmd.manufacturerId}   firmwareId: ${cmd.firmwareId}"
+    logDebug "---FIRMWARE METADATA REPORT V2 ${device.displayName}   manufacturerId: ${cmd.manufacturerId}   firmwareId: ${cmd.firmwareId}"
+}
+
+private logDebug(msg) {
+	if (settings?.debugOutput || settings?.debugOutput == null) {
+		log.debug "$msg"
+	}
 }
 
 // Check Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original code **************
@@ -660,47 +674,46 @@ def version(){
 def updatecheck(){
     setVersion()
      def paramsUD = [uri: "https://hubitatcommunity.github.io/AeotecMultiSensor6/versions.json"]
-     try {
-		httpGet(paramsUD) { respUD ->
-			//  log.info " Version Checking - Response Data: ${respUD.data}"   // Debug Code 
-			def copyNow = (respUD.data.copyright)
-			state.Copyright = copyNow
-			def newver = (respUD.data.versions.(state.Type).(state.InternalName))
-			def codeVer = (respUD.data.versions.(state.Type).(state.InternalName).replace(".", ""))
-			def codeOld = state.version.replace(".", "")
-			state.UpdateInfo = (respUD.data.versions.UpdateInfo.(state.Type).(state.InternalName)) 
-					
-			if(codeVer == "NLS") {
-			    state.Status = "<b>** This $state.Type is no longer supported by code  **</b>"       
-			    log.warn "** This $state.Type is no longer supported by code **"      
-			}           
-			else if(codeOld < codeVer){
-				state.Status = "<b>New Version Available (Version: $newver)</b>"
-				log.warn "** There is a newer version of this $state.Type available  (Version: $newver) **"
-				log.warn "** $state.UpdateInfo **"
-			} 
-			else { 
-					state.Status = "Current"
-					log.info "$state.Type is the current version"
-			}
-		}
-       } 
-        catch (e) {
-        log.error "Something went wrong: $e"
-    }
-    
-    checkInfo()
-        
-}        
+      try {
+            httpGet(paramsUD) { respUD ->
+                  //  log.warn " Version Checking - Response Data: ${respUD.data}"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver
+                  def copyrightRead = (respUD.data.copyright)
+                  state.Copyright = copyrightRead
+                  def newVerRaw = (respUD.data.versions.Driver.(state.InternalName))
+                  def newVer = (respUD.data.versions.Driver.(state.InternalName).replace(".", ""))
+                  def currentVer = state.Version.replace(".", "")
+                  state.UpdateInfo = (respUD.data.versions.UpdateInfo.Driver.(state.InternalName))
+                  state.author = (respUD.data.author)
+                  if(newVer == "NLS"){
+                       state.Status = "<b>** This driver is no longer supported by $state.author  **</b>"       
+                       log.warn "** This driver is no longer supported by $state.author **"      
+                  }           
+                  else if(currentVer < newVer){
+                       state.Status = "<b>New Version Available (Version: $newVerRaw)</b>"
+                       log.warn "** There is a newer version of this driver available  (Version: $newVerRaw) **"
+                       log.warn "** $state.UpdateInfo **"
+                 } 
+                 else{ 
+                     state.Status = "Current"
+                     log.info "You are using the current version of this driver"
+                 }
+            } // httpGet
+      } // try
 
-def checkInfo(){
-  if(state.Status == "Current"){
-     state.UpdateInfo = "None"
-     sendEvent(name: "DriverUpdate", value: state.UpdateInfo, isStateChange: true)
-     sendEvent(name: "DriverStatus", value: state.Status, isStateChange: true)
-    }
-    else{
-     sendEvent(name: "DriverUpdate", value: state.UpdateInfo, isStateChange: true)
-     sendEvent(name: "DriverStatus", value: state.Status, isStateChange: true)
-    }   
+      catch (e) {
+           log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI -  $e"
+      }
+
+      if(state.Status == "Current"){
+           state.UpdateInfo = "N/A"
+           sendEvent(name: "DriverUpdate", value: state.UpdateInfo, isStateChange: true)
+           sendEvent(name: "DriverStatus", value: state.Status, isStateChange: true)
+      }
+      else {
+           sendEvent(name: "DriverUpdate", value: state.UpdateInfo, isStateChange: true)
+           sendEvent(name: "DriverStatus", value: state.Status, isStateChange: true)
+      }
+
+      sendEvent(name: "DriverAuthor", value: state.author, isStateChange: true)
+      sendEvent(name: "DriverVersion", value: state.Version, isStateChange: true)
 }
