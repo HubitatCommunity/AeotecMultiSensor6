@@ -120,7 +120,7 @@ def setVersion(){
 def updated() {
     logDebug "In Updated with settings: ${settings}"
     logDebug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
-    if (logDebug) runIn(1800,logsOff)
+    if (debugOutput) runIn(1800,logsOff)
     version()
 
     // Check for any null settings and change them to default values
