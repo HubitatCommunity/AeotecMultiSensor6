@@ -11,6 +11,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.4  Added selectiveReport, enabled humidChangeAmount, luxChangeAmount
  *         v1.3  Restored logDebug as default logging is too much. cSteele
  *         v1.2  Merged Chuckles updates
  *         v1.1d Added remote version checking ** Cobra (CobraVmax) for his original version check code
@@ -103,13 +104,14 @@ metadata {
             input "humidOffset", "number", title: "Humidity Offset/Adjustment -50 to +50 in percent?", range: "-10..10", description: "If your humidity is inaccurate this will offset/adjust it by this percent.", defaultValue: 0, required: false, displayDuringSetup: true
             input "luxOffset", "number", title: "Luminance Offset/Adjustment -10 to +10 in LUX?", range: "-10..10", description: "If your luminance is inaccurate this will offset/adjust it by this percent.", defaultValue: 0, required: false, displayDuringSetup: true
         }
+        input name: "selectiveReporting", type: "bool", title: "Enable Selective Reporting?", defaultValue: false
         input name: "debugOutput", type: "bool", title: "Enable debug logging?", defaultValue: true
     }
 }
 
 // App Version   *********************************************************************************
 def setVersion(){
-    state.Version = "1.3"
+    state.Version = "1.4"
     state.InternalName = "AeotecMultiSensor6"
     
     sendEvent(name: "DriverAuthor", value: "cSteele", isStateChange: true)
@@ -132,13 +134,20 @@ def updated() {
         reportInterval = "5 minutes"
     if (tempChangeAmount == null)
         tempChangeAmount = 2
+    if (humidChangeAmount == null)
+        humidChangeAmount = 10
+    if (luxChangeAmount == null)
+        luxChangeAmount = 100
     if (tempOffset == null)
         tempOffset = 0
     if (humidOffset == null)
         humidOffset = 0
     if (luxOffset == null)
         luxOffset = 0
-
+    if (selectiveReporting) {
+        selectiveReport = 1 
+       }else { 
+        selectiveReport = 0  }  
 
     if (motionSensitivity < 0)
     {
@@ -196,6 +205,7 @@ def updated() {
     } else if (device.latestValue("powerSource") == "battery") {  //case2: battery powered
         // setConfigured("false") is used by WakeUpNotification
         setConfigured("false") //wait until the next time device wakeup to send configure command after user change preference
+        selectiveReport = 0 // battery, selective reporting is not supported
     } else { //case3: power source is not identified, ask user to properly pair the sensor again
         log.warn "power source is not identified, check it sensor is powered by USB, if so > configure()"
         def request = []
@@ -450,6 +460,11 @@ def configure() {
         humidOffset = 0
     if (tempChangeAmount == null)
         tempChangeAmount = 2
+    if (humidChangeAmount == null)
+        humidChangeAmount = 10
+    if (luxChangeAmount == null)
+        luxChangeAmount = 100
+
 
     if (motionSensitivity < 0) {
         logDebug "Motion sensitivity too low ... resetting to 0"
@@ -546,8 +561,8 @@ def configure() {
             // battery report time.. too long at  every 6 hours change to 2 hours.
             zwave.configurationV1.configurationSet(parameterNumber: 112, size: 4, scaledConfigurationValue: 2*60*60),  //association group 2
 
-            //6. disable selective reporting only on thresholds
-            zwave.configurationV1.configurationSet(parameterNumber: 40, size: 1, scaledConfigurationValue: 0),
+            //6. enable/disable selective reporting only on thresholds
+            zwave.configurationV1.configurationSet(parameterNumber: 40, size: 1, scaledConfigurationValue: selectiveReport),
 
             // Set the temperature scale for automatic reports
             // US units default to reporting in Fahrenheit, whilst all others default to reporting in Celsius, but we can configure the preferred scale with this setting
@@ -555,6 +570,12 @@ def configure() {
 
             // Automatically generate a report when temp changes by specified amount
             zwave.configurationV1.configurationSet(parameterNumber: 41, size: 4, configurationValue: [0, tempChangeAmount, tempScaleByte, 0]),
+
+            // Automatically generate a report when humidity changes by specified amount
+            zwave.configurationV1.configurationSet(parameterNumber: 43, size: 1, scaledConfigurationValue: humidChangeAmount),
+
+            // Automatically generate a report when lux changes by specified amount
+            zwave.configurationV1.configurationSet(parameterNumber: 42, size: 2, scaledConfigurationValue: luxChangeAmount),
 
             // send binary sensor report for motion
             zwave.configurationV1.configurationSet(parameterNumber: 0x05, size: 1, scaledConfigurationValue: 2),
@@ -667,8 +688,7 @@ private logDebug(msg) {
 // Check Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original code **************
 def version(){
     updatecheck()
-    if (state.Type == "Application"){schedule("0 0 9 ? * FRI *", updatecheck)}
-    if (state.Type == "Driver"){schedule("0 0 8 ? * FRI *", updatecheck)}
+    schedule("0 0 8 ? * FRI *", updatecheck)
 }
 
 def updatecheck(){
