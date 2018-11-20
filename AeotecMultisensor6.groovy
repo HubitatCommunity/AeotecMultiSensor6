@@ -572,10 +572,10 @@ def configure() {
             zwave.configurationV1.configurationSet(parameterNumber: 41, size: 4, configurationValue: [0, tempChangeAmount, tempScaleByte, 0]),
 
             // Automatically generate a report when humidity changes by specified amount
-            zwave.configurationV1.configurationSet(parameterNumber: 43, size: 1, scaledConfigurationValue: humidChangeAmount),
+            zwave.configurationV1.configurationSet(parameterNumber: 42, size: 1, scaledConfigurationValue: humidChangeAmount),
 
             // Automatically generate a report when lux changes by specified amount
-            zwave.configurationV1.configurationSet(parameterNumber: 42, size: 2, scaledConfigurationValue: luxChangeAmount),
+            zwave.configurationV1.configurationSet(parameterNumber: 43, size: 2, scaledConfigurationValue: luxChangeAmount),
 
             // send binary sensor report for motion
             zwave.configurationV1.configurationSet(parameterNumber: 0x05, size: 1, scaledConfigurationValue: 2),
