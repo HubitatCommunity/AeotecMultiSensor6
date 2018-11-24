@@ -144,10 +144,8 @@ def updated() {
         humidOffset = 0
     if (luxOffset == null)
         luxOffset = 0
-    if (selectiveReporting) {
-        selectiveReport = 1 
-       }else { 
-        selectiveReport = 0  }  
+    selectiveReport = selectiveReporting ? 0 : 1
+
 
     if (motionSensitivity < 0)
     {
