@@ -84,7 +84,7 @@ metadata {
 
     preferences {
 
-        // Note: Hubitat doesn't appear to honour sections in device handler preferences just now, but hopefully one day...
+        // Note: Hubitat doesn't appear to honour 'sections' in device handler preferences just now, but hopefully one day...
         section("Motion sensor settings") {
             input "motionDelayTime", "enum", title: "Motion Sensor Delay Time?",
                     options: ["20 seconds", "30 seconds", "1 minute", "2 minutes", "3 minutes", "4 minutes"], defaultValue: "1 minute", displayDuringSetup: true
@@ -126,26 +126,17 @@ def updated() {
     version()
 
     // Check for any null settings and change them to default values
-    if (motionDelayTime == null)
-        motionDelayTime = "1 minute"
-    if (motionSensitivity == null)
-        motionSensitivity = 3
-    if (reportInterval == null)
-        reportInterval = "5 minutes"
-    if (tempChangeAmount == null)
-        tempChangeAmount = 2
-    if (humidChangeAmount == null)
-        humidChangeAmount = 10
-    if (luxChangeAmount == null)
-        luxChangeAmount = 100
-    if (tempOffset == null)
-        tempOffset = 0
-    if (humidOffset == null)
-        humidOffset = 0
-    if (luxOffset == null)
-        luxOffset = 0
-    selectiveReport = selectiveReporting ? 0 : 1
-
+    if (motionDelayTime == null)  motionDelayTime = "1 minute"
+    if (motionSensitivity == null) motionSensitivity = 3
+    if (reportInterval == null) reportInterval = "5 minutes"
+    if (tempChangeAmount == null) tempChangeAmount = 2
+    if (humidChangeAmount == null) humidChangeAmount = 10
+    if (luxChangeAmount == null) luxChangeAmount = 100
+    if (tempOffset == null) tempOffset = 0
+    if (humidOffset == null) humidOffset = 0
+    if (luxOffset == null) luxOffset = 0
+    selectiveReport = 0
+    if (selectiveReporting == true) {selectiveReport = 1}
 
     if (motionSensitivity < 0)
     {
@@ -197,7 +188,6 @@ def updated() {
         logDebug "Luminance Offset too high ... resetting to +1000LUX"
     }
 
-
     if (device.latestValue("powerSource") == "dc") {  //case1: USB powered
         response(configure())
     } else if (device.latestValue("powerSource") == "battery") {  //case2: battery powered
@@ -239,7 +229,7 @@ def parse(String description) {
 
 //this notification will be sent only when device is battery powered
 def zwaveEvent(hubitat.zwave.commands.wakeupv1.WakeUpNotification cmd) {
-    def result = [createEvent(descriptionText: "${device.displayName} woke up", isStateChange: false)]
+    def result = [createEvent(descriptionText: "${device.displayName} woke up", isStateChange: "false")]
     def cmds = []
     if (!isConfigured()) {
         logDebug("late configure")
@@ -368,11 +358,11 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
 def motionEvent(value) {
     def map = [name: "motion"]
     if (value) {
-        logDebug "motion active"
+        log.info "motion active"
         map.value = "active"
         map.descriptionText = "$device.displayName detected motion"
     } else {
-        logDebug "motion inactive"
+        log.info "motion inactive"
         map.value = "inactive"
         map.descriptionText = "$device.displayName motion has stopped"
     }
@@ -682,6 +672,13 @@ private logDebug(msg) {
 		log.debug "$msg"
 	}
 }
+
+private dbCleanUp() {
+    unschedule()
+    state.remove("version")
+    state.remove("sensorTemp")
+}
+
 
 // Check Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original code **************
 def version(){
