@@ -135,6 +135,16 @@ def updated() {
     if (tempOffset == null) tempOffset = 0
     if (humidOffset == null) humidOffset = 0
     if (luxOffset == null) luxOffset = 0
+//    motionDelayTime   = motionDelayTime ?: "1 minute"
+//    motionSensitivity = motionSensitivity ?: 3
+//    reportInterval    = reportInterval ?: "5 minute"
+//    tempChangeAmount  = tempChangeAmount ?: 2
+//    humidChangeAmount = humidChangeAmount ?: 10
+//    luxChangeAmount   = luxChangeAmount ?: 100
+//    tempOffset        = tempOffset ?: 0
+//    humidOffset       = humidOffset ?: 0
+//    luxOffset         = luxOffset ?: 0
+//    selectiveReport   = selectiveReporting ? 0 : 1
     selectiveReport = 0
     if (selectiveReporting == true) {selectiveReport = 1}
 
@@ -436,23 +446,17 @@ def configure() {
     // This sensor joins as a secure device if you double-click the button to include it
     log.debug "${device.displayName} is configuring its settings"
 
-    if (motionDelayTime == null)
-        motionDelayTime = "1 minute"
-    if (reportInterval == null)
-        reportInterval = "5 minutes"
-    if (motionSensitivity == null)
-        motionSensitivity = 3
-    if (tempOffset == null)
-        tempOffset = 0
-    if (humidOffset == null)
-        humidOffset = 0
-    if (tempChangeAmount == null)
-        tempChangeAmount = 2
-    if (humidChangeAmount == null)
-        humidChangeAmount = 10
-    if (luxChangeAmount == null)
-        luxChangeAmount = 100
-
+    if (motionDelayTime == null)  motionDelayTime = "1 minute"
+    if (motionSensitivity == null) motionSensitivity = 3
+    if (reportInterval == null) reportInterval = "5 minutes"
+    if (tempChangeAmount == null) tempChangeAmount = 2
+    if (humidChangeAmount == null) humidChangeAmount = 10
+    if (luxChangeAmount == null) luxChangeAmount = 100
+    if (tempOffset == null) tempOffset = 0
+    if (humidOffset == null) humidOffset = 0
+    if (luxOffset == null) luxOffset = 0
+    selectiveReport = 0
+    if (selectiveReporting == true) {selectiveReport = 1}
 
     if (motionSensitivity < 0) {
         logDebug "Motion sensitivity too low ... resetting to 0"
@@ -491,10 +495,12 @@ def configure() {
     logDebug "In configure: Report Interval = $settings.reportInterval"
     logDebug "Motion Delay Time = $settings.motionDelayTime"
     logDebug "Motion Sensitivity = $settings.motionSensitivity"
-    logDebug "Temperature adjust = $settings.TempOffset"
-    logDebug "Humidity adjust = $settings.HumidOffset"
+    logDebug "Temperature adjust = $settings.tempOffset"
+    logDebug "Humidity adjust = $settings.humidOffset"
     logDebug "Temp Scale = $settings.tempScale"
-    logDebug "Min Temp change for reporting = $settings.TempChangeAmount"
+    logDebug "Min Temp change for reporting = $settings.tempChangeAmount"
+    logDebug "Min Humidity change for reporting = $settings.humidChangeAmount"
+    logDebug "Min Lux change for reporting = $settings.luxChangeAmount"
 
     def now = new Date()
     def tf = new java.text.SimpleDateFormat("dd-MMM-yyyy h:mm a")
