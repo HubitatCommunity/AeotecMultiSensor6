@@ -11,6 +11,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.5  Added LED Options
  *         v1.4  Added selectiveReport, enabled humidChangeAmount, luxChangeAmount
  *         v1.3  Restored logDebug as default logging is too much. cSteele
  *         v1.2  Merged Chuckles updates
@@ -104,6 +105,8 @@ metadata {
             input "humidOffset", "number", title: "Humidity Offset/Adjustment -50 to +50 in percent?", range: "-10..10", description: "If your humidity is inaccurate this will offset/adjust it by this percent.", defaultValue: 0, required: false, displayDuringSetup: true
             input "luxOffset", "number", title: "Luminance Offset/Adjustment -10 to +10 in LUX?", range: "-10..10", description: "If your luminance is inaccurate this will offset/adjust it by this percent.", defaultValue: 0, required: false, displayDuringSetup: true
         }
+        input "ledOptions", "enum", title: "LED Options",
+            options: ["Fully Enabled", "Disable When Motion", "Fully Disabled"], defaultValue: "Fully Enabled", displayDuringSetup: true
         input name: "selectiveReporting", type: "bool", title: "Enable Selective Reporting?", defaultValue: false
         input name: "debugOutput", type: "bool", title: "Enable debug logging?", defaultValue: true
     }
@@ -111,7 +114,7 @@ metadata {
 
 // App Version   *********************************************************************************
 def setVersion(){
-    state.Version = "1.4"
+    state.Version = "1.5"
     state.InternalName = "AeotecMultiSensor6"
     
     sendEvent(name: "DriverAuthor", value: "cSteele", isStateChange: true)
@@ -145,6 +148,9 @@ def updated() {
 //    humidOffset       = humidOffset ?: 0
 //    luxOffset         = luxOffset ?: 0
 //    selectiveReport   = selectiveReporting ? 0 : 1
+    ledOption = 0   // default
+    log.debug "ledOptions = ${ledOptions}"
+    
     selectiveReport = 0
     if (selectiveReporting == true) {selectiveReport = 1}
 
@@ -501,6 +507,7 @@ def configure() {
     logDebug "Min Temp change for reporting = $settings.tempChangeAmount"
     logDebug "Min Humidity change for reporting = $settings.humidChangeAmount"
     logDebug "Min Lux change for reporting = $settings.luxChangeAmount"
+    logDebug "LED Option = $settings.ledOption"
 
     def now = new Date()
     def tf = new java.text.SimpleDateFormat("dd-MMM-yyyy h:mm a")
@@ -583,6 +590,9 @@ def configure() {
             // Set luminance calibration offset
             zwave.configurationV1.configurationSet(parameterNumber: 203, size: 2, scaledConfigurationValue: luxOffset),
 
+            // Set LED Option value
+            zwave.configurationV1.configurationSet(parameterNumber: 81, size: 1, scaledConfigurationValue: ledOptionValueMap[ledOptions]),
+
             //7. query sensor data
             zwave.batteryV1.batteryGet(),
             zwave.sensorBinaryV1.sensorBinaryGet(),
@@ -626,6 +636,12 @@ private def getTimeOptionValueMap() { [
         "12 hours"   : 12*60*60,
         "18 hours"   : 18*60*60,
         "24 hours"   : 24*60*60,
+]}
+
+private def getLedOptionValueMap() { [
+        "Fully Enabled" : 0,
+        "Disable When Motion" : 1,
+        "Fully Disabled"   : 2,
 ]}
 
 private setConfigured(configure) {
