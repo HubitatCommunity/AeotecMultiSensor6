@@ -11,6 +11,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.6  deleted 'isStateChange = true' throughout
  *         v1.5  Added LED Options
  *         v1.4  Added selectiveReport, enabled humidChangeAmount, luxChangeAmount
  *         v1.3  Restored logDebug as default logging is too much. cSteele
@@ -114,12 +115,12 @@ metadata {
 
 // App Version   *********************************************************************************
 def setVersion(){
-    state.Version = "1.5"
+    state.Version = "1.6"
     state.InternalName = "AeotecMultiSensor6"
     
-    sendEvent(name: "DriverAuthor", value: "cSteele", isStateChange: true)
-    sendEvent(name: "DriverVersion", value: state.version, isStateChange: true)
-    sendEvent(name: "DriverStatus", value: state.Status, isStateChange: true)
+    sendEvent(name: "DriverAuthor", value: "cSteele")
+    sendEvent(name: "DriverVersion", value: state.version)
+    sendEvent(name: "DriverStatus", value: state.Status)
 }
 
 def updated() {
@@ -138,18 +139,9 @@ def updated() {
     if (tempOffset == null) tempOffset = 0
     if (humidOffset == null) humidOffset = 0
     if (luxOffset == null) luxOffset = 0
-//    motionDelayTime   = motionDelayTime ?: "1 minute"
-//    motionSensitivity = motionSensitivity ?: 3
-//    reportInterval    = reportInterval ?: "5 minute"
-//    tempChangeAmount  = tempChangeAmount ?: 2
-//    humidChangeAmount = humidChangeAmount ?: 10
-//    luxChangeAmount   = luxChangeAmount ?: 100
-//    tempOffset        = tempOffset ?: 0
-//    humidOffset       = humidOffset ?: 0
-//    luxOffset         = luxOffset ?: 0
-//    selectiveReport   = selectiveReporting ? 0 : 1
+
     ledOption = 0   // default
-    log.debug "ledOptions = ${ledOptions}"
+    log.info "ledOptions = ${ledOptions}"
     
     selectiveReport = 0
     if (selectiveReporting == true) {selectiveReport = 1}
@@ -228,8 +220,8 @@ def parse(String description) {
     // log.debug "In parse() for description: $description"
     def result = null
     if (description.startsWith("Err 106")) {
-        log.debug "parse() >> Err 106"
-        result = createEvent( name: "secureInclusion", value: "failed", isStateChange: true,
+        log.warn "parse() >> Err 106"
+        result = createEvent( name: "secureInclusion", value: "failed",
                 descriptionText: "This sensor failed to complete the network security key exchange. If you are unable to control it via Hubitat, you must remove it from your network and add it again.")
     } else if (description != "updated") {
         // log.debug "About to zwave.parse($description)"
@@ -245,7 +237,7 @@ def parse(String description) {
 
 //this notification will be sent only when device is battery powered
 def zwaveEvent(hubitat.zwave.commands.wakeupv1.WakeUpNotification cmd) {
-    def result = [createEvent(descriptionText: "${device.displayName} woke up", isStateChange: "false")]
+    def result = [createEvent(descriptionText: "${device.displayName} woke up")]
     def cmds = []
     if (!isConfigured()) {
         logDebug("late configure")
@@ -278,7 +270,7 @@ def zwaveEvent(hubitat.zwave.commands.securityv1.SecurityCommandsSupportedReport
 def zwaveEvent(hubitat.zwave.commands.securityv1.NetworkKeyVerify cmd) {
     state.sec = 1
     log.info "Executing zwaveEvent 98 (SecurityV1): 07 (NetworkKeyVerify) with cmd: $cmd (node is securely included)"
-    def result = [createEvent(name:"secureInclusion", value:"success", descriptionText:"Secure inclusion was successful", isStateChange: true)]
+    def result = [createEvent(name:"secureInclusion", value:"success", descriptionText:"Secure inclusion was successful")]
     result
 }
 
@@ -315,7 +307,6 @@ def zwaveEvent(hubitat.zwave.commands.batteryv1.BatteryReport cmd) {
     if (cmd.batteryLevel == 0xFF) {
         map.value = 1
         map.descriptionText = "${device.displayName} battery is low"
-        map.isStateChange = true
     } else {
         map.value = cmd.batteryLevel
     }
@@ -374,11 +365,11 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
 def motionEvent(value) {
     def map = [name: "motion"]
     if (value) {
-        log.info "motion active"
+        log.info "$device.displayName motion active"
         map.value = "active"
         map.descriptionText = "$device.displayName detected motion"
     } else {
-        log.info "motion inactive"
+        log.info "$device.displayName motion inactive"
         map.value = "inactive"
         map.descriptionText = "$device.displayName motion has stopped"
     }
@@ -415,7 +406,7 @@ def zwaveEvent(hubitat.zwave.commands.notificationv3.NotificationReport cmd) {
         }
     } else {
         log.warn "Need to handle this cmd.notificationType: ${cmd.notificationType}"
-        result << createEvent(descriptionText: cmd.toString(), isStateChange: false)
+        result << createEvent(descriptionText: cmd.toString())
     }
     result
 }
@@ -450,7 +441,7 @@ def zwaveEvent(hubitat.zwave.Command cmd) {
 
 def configure() {
     // This sensor joins as a secure device if you double-click the button to include it
-    log.debug "${device.displayName} is configuring its settings"
+    log.info "${device.displayName} is configuring its settings"
 
     if (motionDelayTime == null)  motionDelayTime = "1 minute"
     if (motionSensitivity == null) motionSensitivity = 3
@@ -743,14 +734,15 @@ def updatecheck(){
 
       if(state.Status == "Current"){
            state.UpdateInfo = "N/A"
-           sendEvent(name: "DriverUpdate", value: state.UpdateInfo, isStateChange: true)
-           sendEvent(name: "DriverStatus", value: state.Status, isStateChange: true)
+           sendEvent(name: "DriverUpdate", value: state.UpdateInfo)
+           sendEvent(name: "DriverStatus", value: state.Status)
       }
       else {
-           sendEvent(name: "DriverUpdate", value: state.UpdateInfo, isStateChange: true)
-           sendEvent(name: "DriverStatus", value: state.Status, isStateChange: true)
+           sendEvent(name: "DriverUpdate", value: state.UpdateInfo)
+           sendEvent(name: "DriverStatus", value: state.Status)
       }
 
-      sendEvent(name: "DriverAuthor", value: state.author, isStateChange: true)
-      sendEvent(name: "DriverVersion", value: state.Version, isStateChange: true)
+      sendEvent(name: "DriverAuthor", value: state.author)
+      sendEvent(name: "DriverVersion", value: state.Version)
 }
+
