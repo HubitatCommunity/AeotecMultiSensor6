@@ -6,7 +6,7 @@
 		"Application": {
 		},
 		"Driver": {
-			"AeotecMultiSensor6": "1.6.1"
+			"AeotecMultiSensor6": "1.6.2"
 		},
 
 		"UpdateInfo": {
