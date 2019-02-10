@@ -1,8 +1,6 @@
 /**
- *  Hubitat Import URL: https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy
- */
-
-/**
+ * IMPORT URL: https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy
+ *
  *  Copyright 2015 SmartThings
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -15,7 +13,8 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
- *         v1.6  deleted 'isStateChange = true' throughout
+ *         v1.6.1  added degree symbol to temp scale
+ *         v1.6  deleted isStateChange throughout
  *         v1.5  Added LED Options
  *         v1.4  Added selectiveReport, enabled humidChangeAmount, luxChangeAmount
  *         v1.3  Restored logDebug as default logging is too much. cSteele
@@ -110,6 +109,7 @@ metadata {
             input "humidOffset", "number", title: "Humidity Offset/Adjustment -50 to +50 in percent?", range: "-10..10", description: "If your humidity is inaccurate this will offset/adjust it by this percent.", defaultValue: 0, required: false, displayDuringSetup: true
             input "luxOffset", "number", title: "Luminance Offset/Adjustment -10 to +10 in LUX?", range: "-10..10", description: "If your luminance is inaccurate this will offset/adjust it by this percent.", defaultValue: 0, required: false, displayDuringSetup: true
         }
+
         input "ledOptions", "enum", title: "LED Options",
             options: ["Fully Enabled", "Disable When Motion", "Fully Disabled"], defaultValue: "Fully Enabled", displayDuringSetup: true
         input name: "selectiveReporting", type: "bool", title: "Enable Selective Reporting?", defaultValue: false
@@ -130,6 +130,7 @@ def setVersion(){
 def updated() {
     logDebug "In Updated with settings: ${settings}"
     logDebug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
+    unschedule()
     if (debugOutput) runIn(1800,logsOff)
     version()
 
@@ -143,7 +144,6 @@ def updated() {
     if (tempOffset == null) tempOffset = 0
     if (humidOffset == null) humidOffset = 0
     if (luxOffset == null) luxOffset = 0
-
     ledOption = 0   // default
     log.info "ledOptions = ${ledOptions}"
     
@@ -340,7 +340,7 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
             logDebug "finalval = $finalval"
 
             map.value = finalval
-            map.unit = getTemperatureScale()
+            map.unit = "\u00b0" + getTemperatureScale()
             map.name = "temperature"
             break
         case 3:
@@ -586,7 +586,7 @@ def configure() {
             zwave.configurationV1.configurationSet(parameterNumber: 203, size: 2, scaledConfigurationValue: luxOffset),
 
             // Set LED Option value
-            zwave.configurationV1.configurationSet(parameterNumber: 81, size: 1, scaledConfigurationValue: ledOptionValueMap[ledOptions]),
+            zwave.configurationV1.configurationSet(parameterNumber: 81, size: 1, scaledConfigurationValue: ledOptionValueMap[ledOption]),
 
             //7. query sensor data
             zwave.batteryV1.batteryGet(),
@@ -749,4 +749,3 @@ def updatecheck(){
       sendEvent(name: "DriverAuthor", value: state.author)
       sendEvent(name: "DriverVersion", value: state.Version)
 }
-
