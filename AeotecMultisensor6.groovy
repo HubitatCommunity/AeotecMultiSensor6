@@ -13,6 +13,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.6.2  removed mapping to ledOption(s)
  *         v1.6.1  added degree symbol to temp scale
  *         v1.6  deleted isStateChange throughout
  *         v1.5  Added LED Options
@@ -111,7 +112,7 @@ metadata {
         }
 
         input "ledOptions", "enum", title: "LED Options",
-            options: ["Fully Enabled", "Disable When Motion", "Fully Disabled"], defaultValue: "Fully Enabled", displayDuringSetup: true
+            options: [0:"Fully Enabled", 1:"Disable When Motion", 2:"Fully Disabled"], defaultValue: "0", displayDuringSetup: true
         input name: "selectiveReporting", type: "bool", title: "Enable Selective Reporting?", defaultValue: false
         input name: "debugOutput", type: "bool", title: "Enable debug logging?", defaultValue: true
     }
@@ -119,11 +120,11 @@ metadata {
 
 // App Version   *********************************************************************************
 def setVersion(){
-    state.Version = "1.6.1"
+    state.Version = "1.6.2"
     state.InternalName = "AeotecMultiSensor6"
     
     sendEvent(name: "DriverAuthor", value: "cSteele")
-    sendEvent(name: "DriverVersion", value: state.version)
+    sendEvent(name: "DriverVersion", value: state.Version)
     sendEvent(name: "DriverStatus", value: state.Status)
 }
 
@@ -144,7 +145,6 @@ def updated() {
     if (tempOffset == null) tempOffset = 0
     if (humidOffset == null) humidOffset = 0
     if (luxOffset == null) luxOffset = 0
-    ledOption = 0   // default
     log.info "ledOptions = ${ledOptions}"
     
     selectiveReport = 0
@@ -502,7 +502,7 @@ def configure() {
     logDebug "Min Temp change for reporting = $settings.tempChangeAmount"
     logDebug "Min Humidity change for reporting = $settings.humidChangeAmount"
     logDebug "Min Lux change for reporting = $settings.luxChangeAmount"
-    logDebug "LED Option = $settings.ledOption"
+    logDebug "LED Option = $settings.ledOptions"
 
     def now = new Date()
     def tf = new java.text.SimpleDateFormat("dd-MMM-yyyy h:mm a")
@@ -586,7 +586,7 @@ def configure() {
             zwave.configurationV1.configurationSet(parameterNumber: 203, size: 2, scaledConfigurationValue: luxOffset),
 
             // Set LED Option value
-            zwave.configurationV1.configurationSet(parameterNumber: 81, size: 1, scaledConfigurationValue: ledOptionValueMap[ledOption]),
+            zwave.configurationV1.configurationSet(parameterNumber: 81, size: 1, scaledConfigurationValue: ledOptions),
 
             //7. query sensor data
             zwave.batteryV1.batteryGet(),
@@ -631,12 +631,6 @@ private def getTimeOptionValueMap() { [
         "12 hours"   : 12*60*60,
         "18 hours"   : 18*60*60,
         "24 hours"   : 24*60*60,
-]}
-
-private def getLedOptionValueMap() { [
-        "Fully Enabled" : 0,
-        "Disable When Motion" : 1,
-        "Fully Disabled"   : 2,
 ]}
 
 private setConfigured(configure) {
@@ -693,6 +687,7 @@ private logDebug(msg) {
 private dbCleanUp() {
     unschedule()
     state.remove("version")
+    state.remove("Version")
     state.remove("sensorTemp")
 }
 
