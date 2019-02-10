@@ -119,7 +119,7 @@ metadata {
 
 // App Version   *********************************************************************************
 def setVersion(){
-    state.Version = "1.6"
+    state.Version = "1.6.1"
     state.InternalName = "AeotecMultiSensor6"
     
     sendEvent(name: "DriverAuthor", value: "cSteele")
