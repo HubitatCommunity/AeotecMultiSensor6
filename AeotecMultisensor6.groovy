@@ -13,6 +13,8 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.6.4  corrected temp offset -128 to 127 in configure()
+ *         v1.6.3  added Preference hiding (settingEnable)
  *         v1.6.2  removed mapping to ledOption(s)
  *         v1.6.1  added degree symbol to temp scale
  *         v1.6  deleted isStateChange throughout
@@ -87,40 +89,44 @@ metadata {
 
         fingerprint deviceId: "0x2101", inClusters: "0x5E,0x86,0x72,0x59,0x85,0x73,0x71,0x84,0x80,0x30,0x31,0x70,0x7A", outClusters: "0x5A"
     }
+    
+    if (settingEnable==null) settingEnable = 'true' 
 
     preferences {
 
         // Note: Hubitat doesn't appear to honour 'sections' in device handler preferences just now, but hopefully one day...
         section("Motion sensor settings") {
-            input "motionDelayTime", "enum", title: "Motion Sensor Delay Time?",
-                    options: ["20 seconds", "30 seconds", "1 minute", "2 minutes", "3 minutes", "4 minutes"], defaultValue: "1 minute", displayDuringSetup: true
-            input "motionSensitivity", "number", title: "Motion Sensor Sensitivity? 0(min)..5(max)", range: "0..5", defaultValue: 5, displayDuringSetup: true
+            if (settingEnable)  input "motionDelayTime", "enum", title: "<b>Motion Sensor Delay Time?</b>",
+                                      options: ["20 seconds", "30 seconds", "1 minute", "2 minutes", "3 minutes", "4 minutes"], defaultValue: "1 minute", displayDuringSetup: true
+            input "motionSensitivity", "number", title: "<b>Motion Sensor Sensitivity?</b>", description: "<br><i> 0(min)..5(max)</i><br>", range: "0..5", defaultValue: 5, displayDuringSetup: true
         }
 
         section("Automatic report settings") {
-            input "reportInterval", "enum", title: "Sensors Report Interval?",
-                    options: ["20 seconds", "30 seconds", "1 minute", "2 minutes", "3 minutes", "4 minutes", "5 minutes", "10 minutes", "15 minutes", "30 minutes", "1 hour", "6 hours", "12 hours", "18 hours", "24 hours"], defaultValue: "5 minutes", displayDuringSetup: true
-            input "tempChangeAmount", "number", title: "Temperature Change Amount (Tenths of a degree)?", range: "1..70", description: "The tenths of degrees the temperature must change to induce an automatic report.", defaultValue: 2, required: false
-            input "humidChangeAmount", "number", title: "Humidity Change Amount (%)?", range: "1..100", description: "The percentage the humidity must change to induce an automatic report.", defaultValue: 10, required: false
-            input "luxChangeAmount", "number", title: "Luminance Change Amount (LUX)?", range: "-1000..1000", description: "The amount of LUX the luminance must change to induce an automatic report.", defaultValue: 100, required: false
+            if (settingEnable)  input "reportInterval", "enum", title: "<b>Sensors Report Interval?</b>",
+                                      options: ["20 seconds", "30 seconds", "1 minute", "2 minutes", "3 minutes", "4 minutes", "5 minutes", "10 minutes", "15 minutes", "30 minutes", "1 hour", "6 hours", "12 hours", "18 hours", "24 hours"], defaultValue: "5 minutes", displayDuringSetup: true
+            if (settingEnable)  input "tempChangeAmount", "number", title: "<b>Temperature Change Amount (Tenths of a degree)?</b>", range: "1..70", description: "<br><i>The tenths of degrees the temperature must change to induce an automatic report.</i><br>", defaultValue: 2, required: false
+            if (settingEnable)  input "humidChangeAmount", "number", title: "<b>Humidity Change Amount (%)?</b>", range: "1..100", description: "<br><i>The percentage the humidity must change to induce an automatic report.</i><br>", defaultValue: 10, required: false
+            input "luxChangeAmount", "number", title: "<b>Luminance Change Amount (LUX)?</b>", range: "-1000..1000", description: "<br><i>The amount of LUX the luminance must change to induce an automatic report.</i><br>", defaultValue: 100, required: false
         }
 
         section("Calibration settings") {
-            input "tempOffset", "number", title: "Temperature Offset -128 to +127 (Tenths of a degree)?", range: "-127..128", description: "If your temperature is inaccurate this will offset/adjust it by this many tenths of a degree.", defaultValue: 0, required: false, displayDuringSetup: true
-            input "humidOffset", "number", title: "Humidity Offset/Adjustment -50 to +50 in percent?", range: "-10..10", description: "If your humidity is inaccurate this will offset/adjust it by this percent.", defaultValue: 0, required: false, displayDuringSetup: true
-            input "luxOffset", "number", title: "Luminance Offset/Adjustment -10 to +10 in LUX?", range: "-10..10", description: "If your luminance is inaccurate this will offset/adjust it by this percent.", defaultValue: 0, required: false, displayDuringSetup: true
+            input "tempOffset", "number", title: "<b>Temperature Offset?</b>", range: "-127..128", description: "<br><i> -128 to +127 (Tenths of a degree)<br>If your temperature is inaccurate this will offset/adjust it by this many tenths of a degree.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
+            if (settingEnable)  input "humidOffset", "number", title: "<b>Humidity Offset/Adjustment -50 to +50 in percent?</b>", range: "-10..10", description: "<br><i>If your humidity is inaccurate this will offset/adjust it by this percent.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
+            if (settingEnable)  input "luxOffset", "number", title: "<b>Luminance Offset/Adjustment -10 to +10 in LUX?</b>", range: "-10..10", description: "<br><i>If your luminance is inaccurate this will offset/adjust it by this percent.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
         }
 
-        input "ledOptions", "enum", title: "LED Options",
-            options: [0:"Fully Enabled", 1:"Disable When Motion", 2:"Fully Disabled"], defaultValue: "0", displayDuringSetup: true
-        input name: "selectiveReporting", type: "bool", title: "Enable Selective Reporting?", defaultValue: false
-        input name: "debugOutput", type: "bool", title: "Enable debug logging?", defaultValue: true
+        if (settingEnable)  input "ledOptions", "enum", title: "<b>LED Options</b>",
+                                  options: [0:"Fully Enabled", 1:"Disable When Motion", 2:"Fully Disabled"], defaultValue: "0", displayDuringSetup: true
+        if (settingEnable)  input name: "selectiveReporting", type: "bool", title: "<b>Enable Selective Reporting?</b>", defaultValue: false
+
+        input name: "settingEnable", type: "bool", title: "<b>Display All Preferences</b>", description: "<br><i>Many Preferences are available to you, if needed, by turning ON this toggle.</i><br>", defaultValue: true
+        input name: "debugOutput", type: "bool", title: "<b>Enable debug logging?</b>", description: "<br>", defaultValue: true
     }
 }
 
 // App Version   *********************************************************************************
 def setVersion(){
-    state.Version = "1.6.2"
+    state.Version = "1.6.4"
     state.InternalName = "AeotecMultiSensor6"
     
     sendEvent(name: "DriverAuthor", value: "cSteele")
@@ -133,6 +139,7 @@ def updated() {
     logDebug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
     unschedule()
     if (debugOutput) runIn(1800,logsOff)
+//    if (settingEnable) runIn(2100,SettingsOff)
     version()
 
     // Check for any null settings and change them to default values
@@ -218,6 +225,11 @@ def updated() {
 def logsOff(){
     log.warn "debug logging disabled..."
     device.updateSetting("debugOutput",[value:"false",type:"bool"])
+}
+
+def SettingsOff(){
+    log.warn "Settings disabled..."
+    device.updateSetting("settingEnable",[value:"false",type:"bool"])
 }
 
 def parse(String description) {
@@ -468,12 +480,12 @@ def configure() {
     }
 
     // fix temp offset
-    if (tempOffset < -10) {
-        tempOffset = -10
-        logDebug "Temperature calibration too low... resetting to -10"
-    } else if (tempOffset > 10) {
-        tempOffset = 10
-        logDebug "Temperature calibration too high ... resetting to 10"
+    if (tempOffset < -128) {
+        tempOffset = -128
+        logDebug "Temperature calibration too low... resetting to -128"
+    } else if (tempOffset > 127) {
+        tempOffset = 127
+        logDebug "Temperature calibration too high ... resetting to 127"
     }
 
     // fix humidity offset
@@ -720,6 +732,9 @@ def updatecheck(){
                        log.warn "** There is a newer version of this driver available  (Version: $newVerRaw) **"
                        log.warn "** $state.UpdateInfo **"
                  } 
+                 else if(currentVer > newVer){
+                       state.Status = "<b>You are using a Test version of this Driver (Version: $newVerRaw)</b>"
+                 }
                  else{ 
                      state.Status = "Current"
                      log.info "You are using the current version of this driver"
