@@ -13,6 +13,8 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.6.6  corrected limitation on Humidity Offset
+ *         v1.6.5  alternate description for settingEnabled input
  *         v1.6.4  corrected temp offset -128 to 127 in configure()
  *         v1.6.3  added Preference hiding (settingEnable)
  *         v1.6.2  removed mapping to ledOption(s)
@@ -91,6 +93,7 @@ metadata {
     }
     
     if (settingEnable==null) settingEnable = 'true' 
+    def settingDescr = settingEnable ? "<br><i>Hide many of the Preferences to reduce the clutter, if needed, by turning OFF this toggle.</i><br>" : "<br><i>Many Preferences are available to you, if needed, by turning ON this toggle.</i><br>"
 
     preferences {
 
@@ -111,7 +114,7 @@ metadata {
 
         section("Calibration settings") {
             input "tempOffset", "number", title: "<b>Temperature Offset?</b>", range: "-127..128", description: "<br><i> -128 to +127 (Tenths of a degree)<br>If your temperature is inaccurate this will offset/adjust it by this many tenths of a degree.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
-            if (settingEnable)  input "humidOffset", "number", title: "<b>Humidity Offset/Adjustment -50 to +50 in percent?</b>", range: "-10..10", description: "<br><i>If your humidity is inaccurate this will offset/adjust it by this percent.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
+            if (settingEnable)  input "humidOffset", "number", title: "<b>Humidity Offset/Adjustment -50 to +50 in percent?</b>", range: "-50..50", description: "<br><i>If your humidity is inaccurate this will offset/adjust it by this percent.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
             if (settingEnable)  input "luxOffset", "number", title: "<b>Luminance Offset/Adjustment -10 to +10 in LUX?</b>", range: "-10..10", description: "<br><i>If your luminance is inaccurate this will offset/adjust it by this percent.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
         }
 
@@ -120,13 +123,13 @@ metadata {
         if (settingEnable)  input name: "selectiveReporting", type: "bool", title: "<b>Enable Selective Reporting?</b>", defaultValue: false
 
         input name: "settingEnable", type: "bool", title: "<b>Display All Preferences</b>", description: "<br><i>Many Preferences are available to you, if needed, by turning ON this toggle.</i><br>", defaultValue: true
-        input name: "debugOutput", type: "bool", title: "<b>Enable debug logging?</b>", description: "<br>", defaultValue: true
+        input name: "debugOutput",   type: "bool", title: "<b>Enable debug logging?</b>",   description: "<br>", defaultValue: true
     }
 }
 
 // App Version   *********************************************************************************
 def setVersion(){
-    state.Version = "1.6.4"
+    state.Version = "1.6.6"
     state.InternalName = "AeotecMultiSensor6"
     
     sendEvent(name: "DriverAuthor", value: "cSteele")
@@ -154,8 +157,7 @@ def updated() {
     if (luxOffset == null) luxOffset = 0
     log.info "ledOptions = ${ledOptions}"
     
-    selectiveReport = 0
-    if (selectiveReporting == true) {selectiveReport = 1}
+    selectiveReport = selectiveReporting ? 1 : 0
 
     if (motionSensitivity < 0)
     {
@@ -173,7 +175,7 @@ def updated() {
     if (tempOffset < -128)
     {
         tempOffset = -128
-        logDebug "Temperature Offset too low... resetting to -128 (-12.8 degrees)0"
+        logDebug "Temperature Offset too low... resetting to -128 (-12.8 degrees)"
     }
 
     if (tempOffset > 127)
@@ -195,6 +197,7 @@ def updated() {
         logDebug "Humidity Adjusment too high ... resetting to +50%"
     }
 
+    // fix lux offset
     if (luxOffset < -1000)
     {
         luxOffset = -1000
@@ -468,9 +471,7 @@ def configure() {
     if (tempOffset == null) tempOffset = 0
     if (humidOffset == null) humidOffset = 0
     if (luxOffset == null) luxOffset = 0
-    selectiveReport = 0
-    if (selectiveReporting == true) {selectiveReport = 1}
-
+    selectiveReport = selectiveReporting ? 1 : 0
     if (motionSensitivity < 0) {
         logDebug "Motion sensitivity too low ... resetting to 0"
         motionSensitivity = 0
@@ -480,12 +481,16 @@ def configure() {
     }
 
     // fix temp offset
-    if (tempOffset < -128) {
+    if (tempOffset < -128)
+    {
         tempOffset = -128
-        logDebug "Temperature calibration too low... resetting to -128"
-    } else if (tempOffset > 127) {
+        logDebug "Temperature Offset too low... resetting to -128 (-12.8 degrees)"
+    }
+
+    if (tempOffset > 127)
+    {
         tempOffset = 127
-        logDebug "Temperature calibration too high ... resetting to 127"
+        logDebug "Temperature Offset too high ... resetting to 127 (+12.7 degrees)"
     }
 
     // fix humidity offset
@@ -497,6 +502,7 @@ def configure() {
         logDebug "Humidity calibration too high ... resetting to 50"
     }
 
+    // fix lux offset
     if (luxOffset < -1000) {
         luxOffset = -1000
         logDebug "Luminance calibration too low ... resetting to -1000"
@@ -710,12 +716,16 @@ def version(){
     schedule("0 0 8 ? * FRI *", updatecheck)
 }
 
-def updatecheck(){
-    setVersion()
-     def paramsUD = [uri: "https://hubitatcommunity.github.io/AeotecMultiSensor6/versions.json"]
+def updateCheck()
+{    
+	state.Version = version()
+	state.InternalName = "wx-ApiXU-Driver"
+	state.Copyright = "${thisCopyright}"
+
+	def paramsUD = [uri: "https://csteele-pd.github.io/ApiXU/versions.json"]
       try {
             httpGet(paramsUD) { respUD ->
-                  //  log.warn " Version Checking - Response Data: ${respUD.data}"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver
+			//log.warn " Version Checking - Response Data: ${respUD.data}"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
                   def copyrightRead = (respUD.data.copyright)
                   state.Copyright = copyrightRead
                   def newVerRaw = (respUD.data.versions.Driver.(state.InternalName))
