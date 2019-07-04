@@ -13,6 +13,8 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.6.7  replaced updateCheck with asynchttp version -- removed setVersion, etc.
+ *                 added descTextEnable to reduce log.info option
  *         v1.6.6  corrected limitation on Humidity Offset
  *         v1.6.5  alternate description for settingEnabled input
  *         v1.6.4  corrected temp offset -128 to 127 in configure()
@@ -66,6 +68,7 @@
    14. incresed range and colors for lux values, as when mine is in direct sun outside it goes as high as 1900
    15. support for celsius added. set in input options.
 */
+ public static String version()      {  return "v1.6.7"  }
 
 metadata {
     definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele") {
@@ -82,12 +85,9 @@ metadata {
         capability "Contact Sensor"
 
         command    "refresh"
+	  // command    "updateCheck"			// **---** delete for Release
 
         attribute  "firmware", "decimal"
-        attribute  "DriverVersion", "string"
-        attribute  "DriverAuthor", "string"
-        attribute  "DriverStatus", "string"
-        attribute  "DriverUpdate", "string"
 
         fingerprint deviceId: "0x2101", inClusters: "0x5E,0x86,0x72,0x59,0x85,0x73,0x71,0x84,0x80,0x30,0x31,0x70,0x7A", outClusters: "0x5A"
     }
@@ -124,26 +124,20 @@ metadata {
 
         input name: "settingEnable", type: "bool", title: "<b>Display All Preferences</b>", description: "<br><i>Many Preferences are available to you, if needed, by turning ON this toggle.</i><br>", defaultValue: true
         input name: "debugOutput",   type: "bool", title: "<b>Enable debug logging?</b>",   description: "<br>", defaultValue: true
+	  input name: "descTextEnable", type: "bool", title: "<b>Enable descriptionText logging?</b>", defaultValue: true
     }
 }
 
-// App Version   *********************************************************************************
-def setVersion(){
-    state.Version = "1.6.6"
-    state.InternalName = "AeotecMultiSensor6"
-    
-    sendEvent(name: "DriverAuthor", value: "cSteele")
-    sendEvent(name: "DriverVersion", value: state.Version)
-    sendEvent(name: "DriverStatus", value: state.Status)
-}
 
 def updated() {
     logDebug "In Updated with settings: ${settings}"
     logDebug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
     unschedule()
+    schedule("0 0 8 ? * FRI *", updateCheck)
     if (debugOutput) runIn(1800,logsOff)
 //    if (settingEnable) runIn(2100,SettingsOff)
-    version()
+    runIn(20, updateCheck) 
+    state.remove("version")
 
     // Check for any null settings and change them to default values
     if (motionDelayTime == null)  motionDelayTime = "1 minute"
@@ -155,7 +149,7 @@ def updated() {
     if (tempOffset == null) tempOffset = 0
     if (humidOffset == null) humidOffset = 0
     if (luxOffset == null) luxOffset = 0
-    log.info "ledOptions = ${ledOptions}"
+    if (descTextEnable) log.info "ledOptions = ${ledOptions}"
     
     selectiveReport = selectiveReporting ? 1 : 0
 
@@ -282,13 +276,13 @@ def zwaveEvent(hubitat.zwave.commands.securityv1.SecurityMessageEncapsulation cm
 }
 
 def zwaveEvent(hubitat.zwave.commands.securityv1.SecurityCommandsSupportedReport cmd) {
-    log.info "Executing zwaveEvent 98 (SecurityV1): 03 (SecurityCommandsSupportedReport) with cmd: $cmd"
+    if (descTextEnable) log.info "Executing zwaveEvent 98 (SecurityV1): 03 (SecurityCommandsSupportedReport) with cmd: $cmd"
     state.sec = 1
 }
 
 def zwaveEvent(hubitat.zwave.commands.securityv1.NetworkKeyVerify cmd) {
     state.sec = 1
-    log.info "Executing zwaveEvent 98 (SecurityV1): 07 (NetworkKeyVerify) with cmd: $cmd (node is securely included)"
+    if (descTextEnable) log.info "Executing zwaveEvent 98 (SecurityV1): 07 (NetworkKeyVerify) with cmd: $cmd (node is securely included)"
     def result = [createEvent(name:"secureInclusion", value:"success", descriptionText:"Secure inclusion was successful")]
     result
 }
@@ -384,11 +378,11 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
 def motionEvent(value) {
     def map = [name: "motion"]
     if (value) {
-        log.info "$device.displayName motion active"
+        if (descTextEnable) log.info "$device.displayName motion active"
         map.value = "active"
         map.descriptionText = "$device.displayName detected motion"
     } else {
-        log.info "$device.displayName motion inactive"
+        if (descTextEnable) log.info "$device.displayName motion inactive"
         map.value = "inactive"
         map.descriptionText = "$device.displayName motion has stopped"
     }
@@ -460,7 +454,7 @@ def zwaveEvent(hubitat.zwave.Command cmd) {
 
 def configure() {
     // This sensor joins as a secure device if you double-click the button to include it
-    log.info "${device.displayName} is configuring its settings"
+    if (descTextEnable) log.info "${device.displayName} is configuring its settings"
 
     if (motionDelayTime == null)  motionDelayTime = "1 minute"
     if (motionSensitivity == null) motionSensitivity = 3
@@ -670,7 +664,7 @@ private command(hubitat.zwave.Command cmd) {
 }
 
 private commands(commands, delay=1000) {
-    //log.info "sending commands: ${commands}"
+    //if (descTextEnable) log.info "sending commands: ${commands}"
     return delayBetween(commands.collect{ command(it) }, delay)
 }
 
@@ -710,62 +704,65 @@ private dbCleanUp() {
 }
 
 
-// Check Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original code **************
-def version(){
-    updatecheck()
-    schedule("0 0 8 ? * FRI *", updatecheck)
-}
-
+// Check Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original code ****
 def updateCheck()
 {    
-	state.Version = version()
-	state.InternalName = "wx-ApiXU-Driver"
-	state.Copyright = "${thisCopyright}"
-
-	def paramsUD = [uri: "https://csteele-pd.github.io/ApiXU/versions.json"]
-      try {
-            httpGet(paramsUD) { respUD ->
-			//log.warn " Version Checking - Response Data: ${respUD.data}"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
-                  def copyrightRead = (respUD.data.copyright)
-                  state.Copyright = copyrightRead
-                  def newVerRaw = (respUD.data.versions.Driver.(state.InternalName))
-                  def newVer = (respUD.data.versions.Driver.(state.InternalName).replace(".", ""))
-                  def currentVer = state.Version.replace(".", "")
-                  state.UpdateInfo = (respUD.data.versions.UpdateInfo.Driver.(state.InternalName))
-                  state.author = (respUD.data.author)
-                  if(newVer == "NLS"){
-                       state.Status = "<b>** This driver is no longer supported by $state.author  **</b>"       
-                       log.warn "** This driver is no longer supported by $state.author **"      
-                  }           
-                  else if(currentVer < newVer){
-                       state.Status = "<b>New Version Available (Version: $newVerRaw)</b>"
-                       log.warn "** There is a newer version of this driver available  (Version: $newVerRaw) **"
-                       log.warn "** $state.UpdateInfo **"
-                 } 
-                 else if(currentVer > newVer){
-                       state.Status = "<b>You are using a Test version of this Driver (Version: $newVerRaw)</b>"
-                 }
-                 else{ 
-                     state.Status = "Current"
-                     log.info "You are using the current version of this driver"
-                 }
-            } // httpGet
-      } // try
-
-      catch (e) {
-           log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI -  $e"
-      }
-
-      if(state.Status == "Current"){
-           state.UpdateInfo = "N/A"
-           sendEvent(name: "DriverUpdate", value: state.UpdateInfo)
-           sendEvent(name: "DriverStatus", value: state.Status)
-      }
-      else {
-           sendEvent(name: "DriverUpdate", value: state.UpdateInfo)
-           sendEvent(name: "DriverStatus", value: state.Status)
-      }
-
-      sendEvent(name: "DriverAuthor", value: state.author)
-      sendEvent(name: "DriverVersion", value: state.Version)
+	
+	def paramsUD = [uri: "https://hubitatcommunity.github.io/AeotecMultiSensor6/versions.json"]
+	
+ 	asynchttpGet("updateCheckHandler", paramsUD) 
 }
+
+def updateCheckHandler(resp, data) {
+
+	state.InternalName = "AeotecMultiSensor6"
+
+	if (resp.getStatus() == 200 || resp.getStatus() == 207) {
+		respUD = parseJson(resp.data)
+		// log.warn " Version Checking - Response Data: $respUD"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
+		state.Copyright = "${thisCopyright}"
+		def newVerRaw = (respUD.versions.Driver.(state.InternalName))
+		def newVer = (respUD.versions.Driver.(state.InternalName).replaceAll("[.vV]", ""))
+		def currentVer = version().replaceAll("[.vV]", "")   
+		state.UpdateInfo = (respUD.versions.UpdateInfo.Driver.(state.InternalName))
+	
+		if(newVer == "NLS")
+		{
+		      state.Status = "<b>** This driver is no longer supported by $respUD.author  **</b>"       
+		      log.warn "** This driver is no longer supported by $respUD.author **"      
+		}           
+		else if(currentVer < newVer)
+		{
+		      state.Status = "<b>New Version Available (Version: $newVerRaw)</b>"
+		      log.warn "** There is a newer version of this driver available  (Version: $newVerRaw) **"
+		      log.warn "** $state.UpdateInfo **"
+		} 
+		else if(currentVer > newVer)
+		{
+		      state.Status = "<b>You are using a Test version of this Driver (Version: $newVerRaw)</b>"
+		}
+		else
+		{ 
+		    state.Status = "Current"
+		    if (descTextEnable) log.info "You are using the current version of this driver"
+		}
+	
+	      if(state.Status == "Current")
+	      {
+	           state.UpdateInfo = "N/A"
+	           sendEvent(name: "DriverUpdate", value: state.UpdateInfo)
+	           sendEvent(name: "DriverStatus", value: state.Status)
+	      }
+	      else 
+	      {
+	           sendEvent(name: "DriverUpdate", value: state.UpdateInfo)
+	           sendEvent(name: "DriverStatus", value: state.Status)
+	      }
+      }
+      else
+      {
+           log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI"
+      }
+}
+
+def getThisCopyright(){"&copy; 2019 C Steele "}
