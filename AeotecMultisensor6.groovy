@@ -13,8 +13,9 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.6.8  revised Contact Sensor per @Wounded suggestion, restoring tamperAlert
  *         v1.6.7  replaced updateCheck with asynchttp version -- removed setVersion, etc.
- *                 added descTextEnable to reduce log.info option
+ *                 added descTextEnable as option to reduce log.info 
  *         v1.6.6  corrected limitation on Humidity Offset
  *         v1.6.5  alternate description for settingEnabled input
  *         v1.6.4  corrected temp offset -128 to 127 in configure()
@@ -68,7 +69,7 @@
    14. incresed range and colors for lux values, as when mine is in direct sun outside it goes as high as 1900
    15. support for celsius added. set in input options.
 */
- public static String version()      {  return "v1.6.7"  }
+ public static String version()      {  return "v1.6.8"  }
 
 metadata {
     definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele") {
@@ -82,7 +83,7 @@ metadata {
         capability "Battery"
         capability "Power Source"
         capability "Acceleration Sensor"
-        capability "Contact Sensor"
+        capability "TamperAlert"
 
         command    "refresh"
 	  // command    "updateCheck"			// **---** delete for Release
@@ -133,11 +134,11 @@ def updated() {
     logDebug "In Updated with settings: ${settings}"
     logDebug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
     unschedule()
+    dbCleanUp()		// remove antique db entries created in older versions and no longer used.
     schedule("0 0 8 ? * FRI *", updateCheck)
     if (debugOutput) runIn(1800,logsOff)
-//    if (settingEnable) runIn(2100,SettingsOff)
+    if (settingEnable) runIn(2100,SettingsOff)
     runIn(20, updateCheck) 
-    state.remove("version")
 
     // Check for any null settings and change them to default values
     if (motionDelayTime == null)  motionDelayTime = "1 minute"
@@ -401,19 +402,23 @@ def zwaveEvent(hubitat.zwave.commands.basicv1.BasicSet cmd) {
 def zwaveEvent(hubitat.zwave.commands.notificationv3.NotificationReport cmd) {
     def result = []
     if (cmd.notificationType == 7) {
+    //  spec says type 7 is 'Home Security'
         switch (cmd.event) {
             case 0:
-                sendEvent(name: "contact", value: "closed", descriptionText: "$device.displayName is closed", displayed: true)
+            //  spec says this is 'clear previous alert'
+                //sendEvent(name: "contact", value: "closed", descriptionText: "$device.displayName is closed", displayed: true)
                 result << motionEvent(0)
-                //result << createEvent(name: "tamper", value: "clear", displayed: false)
+                result << createEvent(name: "tamper", value: "clear", descriptionText: "$device.displayName tamper cleared", displayed: true)
                 result << createEvent(name: "acceleration", value: "inactive", descriptionText: "$device.displayName is inactive", displayed: true)
                 break
             case 3:
-                sendEvent(name: "contact", value: "open", descriptionText: "$device.displayName is open", displayed: true)
-                //result << createEvent(name: "tamper", value: "detected", descriptionText: "$device.displayName was tampered")
+            //  spec says this is 'tamper'
+                //sendEvent(name: "contact", value: "open", descriptionText: "$device.displayName is open", displayed: true)
+                result << createEvent(name: "tamper", value: "detected", descriptionText: "$device.displayName was tampered", displayed: true)
                 result << createEvent(name: "acceleration", value: "active", descriptionText: "$device.displayName is active", displayed: true)
                 break
             case 8:
+            //  spec says this is 'unknown motion detection'
                 result << motionEvent(1)
                 break
         }
@@ -698,9 +703,12 @@ private logDebug(msg) {
 
 private dbCleanUp() {
     unschedule()
+ // clean up state info that is obsolete
     state.remove("version")
     state.remove("Version")
     state.remove("sensorTemp")
+    state.remove("author")
+    state.remove("Copyright")
 }
 
 
@@ -720,7 +728,7 @@ def updateCheckHandler(resp, data) {
 	if (resp.getStatus() == 200 || resp.getStatus() == 207) {
 		respUD = parseJson(resp.data)
 		// log.warn " Version Checking - Response Data: $respUD"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
-		state.Copyright = "${thisCopyright}"
+//		state.Copyright = "${thisCopyright}"
 		def newVerRaw = (respUD.versions.Driver.(state.InternalName))
 		def newVer = (respUD.versions.Driver.(state.InternalName).replaceAll("[.vV]", ""))
 		def currentVer = version().replaceAll("[.vV]", "")   
