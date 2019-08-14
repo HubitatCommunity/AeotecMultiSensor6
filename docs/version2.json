@@ -1,0 +1,10 @@
+{
+	"author": "C Steele",
+	"comment": "",
+	"copyright": " &#9400; 2019 cSteele",
+	"application": {
+	},
+	"driver": {
+		"AeotecMultiSensor6":  {"ver": "1.6.9", "updated": "14/08/2019"}
+	}
+}
