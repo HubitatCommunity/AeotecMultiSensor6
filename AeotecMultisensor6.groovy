@@ -13,6 +13,9 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.6.10  Swapped to latest updateCheck() code.
+ *         v1.6.9  Added Initialize to preset ledOptions to prevent an NPE when sending the option value to the device.
+ *                 revised updateCheck to use version2.json's format.
  *         v1.6.8  revised Contact Sensor per @Wounded suggestion, restoring tamperAlert
  *         v1.6.7  replaced updateCheck with asynchttp version -- removed setVersion, etc.
  *                 added descTextEnable as option to reduce log.info 
@@ -69,10 +72,10 @@
    14. incresed range and colors for lux values, as when mine is in direct sun outside it goes as high as 1900
    15. support for celsius added. set in input options.
 */
- public static String version()      {  return "v1.6.8"  }
+ public static String version()      {  return "v1.6.10"  }
 
 metadata {
-    definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele") {
+    definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy") {
         capability "Motion Sensor"
         capability "Temperature Measurement"
         capability "Relative Humidity Measurement"
@@ -134,6 +137,7 @@ def updated() {
     logDebug "In Updated with settings: ${settings}"
     logDebug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
     unschedule()
+    initialize()
     dbCleanUp()		// remove antique db entries created in older versions and no longer used.
     schedule("0 0 8 ? * FRI *", updateCheck)
     if (debugOutput) runIn(1800,logsOff)
@@ -150,7 +154,7 @@ def updated() {
     if (tempOffset == null) tempOffset = 0
     if (humidOffset == null) humidOffset = 0
     if (luxOffset == null) luxOffset = 0
-    if (descTextEnable) log.info "ledOptions = ${ledOptions}"
+    if (ledOptions == null) ledOptions = 0
     
     selectiveReport = selectiveReporting ? 1 : 0
 
@@ -695,6 +699,12 @@ def zwaveEvent(hubitat.zwave.commands.firmwareupdatemdv2.FirmwareMdReport cmd) {
     logDebug "---FIRMWARE METADATA REPORT V2 ${device.displayName}   manufacturerId: ${cmd.manufacturerId}   firmwareId: ${cmd.firmwareId}"
 }
 
+
+def initialize() {
+	if (settings.ledOptions == null) settings.ledOptions = 0 // default to Full
+}
+
+
 private logDebug(msg) {
 	if (settings?.debugOutput || settings?.debugOutput == null) {
 		log.debug "$msg"
@@ -702,8 +712,9 @@ private logDebug(msg) {
 }
 
 private dbCleanUp() {
-    unschedule()
- // clean up state info that is obsolete
+  //  unschedule()
+ // clean up state variables that are obsolete
+    state.remove("tempOffset")
     state.remove("version")
     state.remove("Version")
     state.remove("sensorTemp")
@@ -714,12 +725,12 @@ private dbCleanUp() {
 
 // Check Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original code ****
 def updateCheck()
-{    
-	
-	def paramsUD = [uri: "https://hubitatcommunity.github.io/AeotecMultiSensor6/versions.json"]
+{	
+	def paramsUD = [uri: "https://hubitatcommunity.github.io/AeotecMultiSensor6/version2.json"]
 	
  	asynchttpGet("updateCheckHandler", paramsUD) 
 }
+
 
 def updateCheckHandler(resp, data) {
 
@@ -728,49 +739,48 @@ def updateCheckHandler(resp, data) {
 	if (resp.getStatus() == 200 || resp.getStatus() == 207) {
 		respUD = parseJson(resp.data)
 		// log.warn " Version Checking - Response Data: $respUD"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
-//		state.Copyright = "${thisCopyright}"
-		def newVerRaw = (respUD.versions.Driver.(state.InternalName))
-		def newVer = (respUD.versions.Driver.(state.InternalName).replaceAll("[.vV]", ""))
-		def currentVer = version().replaceAll("[.vV]", "")   
-		state.UpdateInfo = (respUD.versions.UpdateInfo.Driver.(state.InternalName))
-	
-		if(newVer == "NLS")
-		{
-		      state.Status = "<b>** This driver is no longer supported by $respUD.author  **</b>"       
-		      log.warn "** This driver is no longer supported by $respUD.author **"      
-		}           
-		else if(currentVer < newVer)
-		{
-		      state.Status = "<b>New Version Available (Version: $newVerRaw)</b>"
-		      log.warn "** There is a newer version of this driver available  (Version: $newVerRaw) **"
-		      log.warn "** $state.UpdateInfo **"
-		} 
-		else if(currentVer > newVer)
-		{
-		      state.Status = "<b>You are using a Test version of this Driver (Version: $newVerRaw)</b>"
+		state.Copyright = "${thisCopyright}"
+		// uses reformattted 'version2.json' 
+		def newVer = padVer(respUD.driver.(state.InternalName).ver)
+		def currentVer = padVer(version())               
+		state.UpdateInfo = (respUD.driver.(state.InternalName).updated)
+            // log.debug "updateCheck: ${respUD.driver.(state.InternalName).ver}, $state.UpdateInfo, ${respUD.author}"
+
+		switch(newVer) {
+			case { it == "NLS"}:
+			      state.Status = "<b>** This Driver is no longer supported by ${respUD.author}  **</b>"       
+			      if (descTextEnable) log.warn "** This Driver is no longer supported by ${respUD.author} **"      
+				break
+			case { it > currentVer}:
+			      state.Status = "<b>New Version Available (Version: ${respUD.driver.(state.InternalName).ver})</b>"
+			      if (descTextEnable) log.warn "** There is a newer version of this Driver available  (Version: ${respUD.driver.(state.InternalName).ver}) **"
+			      if (descTextEnable) log.warn "** $state.UpdateInfo **"
+				break
+			case { it < currentVer}:
+			      state.Status = "<b>You are using a Test version of this Driver (Expecting: ${respUD.driver.(state.InternalName).ver})</b>"
+			      if (descTextEnable) log.warn "You are using a Test version of this Driver (Expecting: ${respUD.driver.(state.InternalName).ver})"
+				break
+			default:
+				state.Status = "Current"
+				if (descTextEnable) log.info "You are using the current version of this driver"
+				break
 		}
-		else
-		{ 
-		    state.Status = "Current"
-		    if (descTextEnable) log.info "You are using the current version of this driver"
-		}
-	
-	      if(state.Status == "Current")
-	      {
-	           state.UpdateInfo = "N/A"
-	           sendEvent(name: "DriverUpdate", value: state.UpdateInfo)
-	           sendEvent(name: "DriverStatus", value: state.Status)
-	      }
-	      else 
-	      {
-	           sendEvent(name: "DriverUpdate", value: state.UpdateInfo)
-	           sendEvent(name: "DriverStatus", value: state.Status)
-	      }
+
+ 	sendEvent(name: "verUpdate", value: state.UpdateInfo)
+	sendEvent(name: "verStatus", value: state.Status)
       }
       else
       {
            log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI"
       }
+}
+
+def padVer(ver) {
+	def pad = ""
+	def v2 = ver.replaceAll( "[vV]", "" )
+	def v3 = v2.split( /\./ )
+	v3.each { pad += it.padLeft( 2, '0' ) }
+	return pad
 }
 
 def getThisCopyright(){"&copy; 2019 C Steele "}
