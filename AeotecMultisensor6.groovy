@@ -775,12 +775,17 @@ def updateCheckHandler(resp, data) {
       }
 }
 
+/*
+    padVer
+
+    Version progression of 1.6.9 to 1.6.10 would mis-compare unless each duple is padded first.
+
+*/ 
 def padVer(ver) {
-	def pad = ""
-	def v2 = ver.replaceAll( "[vV]", "" )
-	def v3 = v2.split( /\./ )
-	v3.each { pad += it.padLeft( 2, '0' ) }
-	return pad
+    def pad = ""
+    ver.replaceAll( "[vV]", "" ).split( /\./ ).each { pad += it.padLeft( 2, '0' ) }
+    return pad
 }
+
 
 def getThisCopyright(){"&copy; 2019 C Steele "}
