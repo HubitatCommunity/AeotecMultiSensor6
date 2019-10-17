@@ -12,7 +12,7 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  *
- *
+ *    BAB  v1.6.10a Changed to HALF_ROUND_UP, standardized DescriptionText
  *         v1.6.10  Swapped to latest updateCheck() code.
  *         v1.6.9  Added Initialize to preset ledOptions to prevent an NPE when sending the option value to the device.
  *                 revised updateCheck to use version2.json's format.
@@ -92,6 +92,9 @@ metadata {
 	  // command    "updateCheck"			// **---** delete for Release
 
         attribute  "firmware", "decimal"
+        attribute  "lastUpdate", "string"
+        attribute  "verUpdate", "string"
+        attribute  "verStatus", "string"
 
         fingerprint deviceId: "0x2101", inClusters: "0x5E,0x86,0x72,0x59,0x85,0x73,0x71,0x84,0x80,0x30,0x31,0x70,0x7A", outClusters: "0x5A"
     }
@@ -126,7 +129,7 @@ metadata {
                                   options: [0:"Fully Enabled", 1:"Disable When Motion", 2:"Fully Disabled"], defaultValue: "0", displayDuringSetup: true
         if (settingEnable)  input name: "selectiveReporting", type: "bool", title: "<b>Enable Selective Reporting?</b>", defaultValue: false
 
-        input name: "settingEnable", type: "bool", title: "<b>Display All Preferences</b>", description: "<br><i>Many Preferences are available to you, if needed, by turning ON this toggle.</i><br>", defaultValue: true
+        input name: "settingEnable", type: "bool", title: "<b>Display All Preferences</b>", description: "<br><i>Many Preferences are available to you, if needed, by turning ON this toggle.</i><br>", defaultValue: true, submitOnChange: true
         input name: "debugOutput",   type: "bool", title: "<b>Enable debug logging?</b>",   description: "<br>", defaultValue: true
 	  input name: "descTextEnable", type: "bool", title: "<b>Enable descriptionText logging?</b>", defaultValue: true
     }
@@ -240,7 +243,7 @@ def parse(String description) {
     if (description.startsWith("Err 106")) {
         log.warn "parse() >> Err 106"
         result = createEvent( name: "secureInclusion", value: "failed",
-                descriptionText: "This sensor failed to complete the network security key exchange. If you are unable to control it via Hubitat, you must remove it from your network and add it again.")
+                             descriptionText: "This sensor (${device.displayName}) failed to complete the network security key exchange. If you are unable to control it via Hubitat, you must remove it from your network and add it again.")
     } else if (description != "updated") {
         // log.debug "About to zwave.parse($description)"
         def cmd = zwave.parse(description, [0x31: 5, 0x30: 1, 0x70: 1, 0x72: 1, 0x84: 1])
@@ -288,7 +291,7 @@ def zwaveEvent(hubitat.zwave.commands.securityv1.SecurityCommandsSupportedReport
 def zwaveEvent(hubitat.zwave.commands.securityv1.NetworkKeyVerify cmd) {
     state.sec = 1
     if (descTextEnable) log.info "Executing zwaveEvent 98 (SecurityV1): 07 (NetworkKeyVerify) with cmd: $cmd (node is securely included)"
-    def result = [createEvent(name:"secureInclusion", value:"success", descriptionText:"Secure inclusion was successful")]
+    def result = [createEvent(name:"secureInclusion", value:"success", descriptionText:"${device.displayName} - Secure inclusion was successful")]
     result
 }
 
@@ -327,6 +330,7 @@ def zwaveEvent(hubitat.zwave.commands.batteryv1.BatteryReport cmd) {
         map.descriptionText = "${device.displayName} battery is low"
     } else {
         map.value = cmd.batteryLevel
+        map.descriptionText = "${device.displayName} battery is ${map.value}%"
     }
 
     createEvent(map)
@@ -339,15 +343,17 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
     switch (cmd.sensorType) {
         case 1:
             logDebug "raw temp = $cmd.scaledSensorValue"
-
+/*
             def now = new Date()
             def tf = new java.text.SimpleDateFormat("dd-MMM-yyyy h:mm a")
             tf.setTimeZone(location.getTimeZone())
             def newtime = "${tf.format(now)}" as String
-            sendEvent(name: "lastUpdate", value: newtime, descriptionText: "Last Update: $newtime ${tf.getTimeZone()}")
+            boolean isChange = isStateChange(device, "lastUpdate", newTime)
+        log.debug "isChange: ${isChange}"
+            if (isChange) sendEvent(name: "lastUpdate", value: newtime, descriptionText: "Updated at $newtime", isStateChange: true) // ${debugOutput?tf.getTimeZone():''}")
 
             logDebug "scaled sensor value = $cmd.scaledSensorValue  scale = $cmd.scale  precision = $cmd.precision"
-
+*/
             // Convert temperature (if needed) to the system's configured temperature scale
             def finalval = convertTemperatureIfNeeded(cmd.scaledSensorValue, cmd.scale == 1 ? "F" : "C", cmd.precision)
 
@@ -356,23 +362,31 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
             map.value = finalval
             map.unit = "\u00b0" + getTemperatureScale()
             map.name = "temperature"
+            map.descriptionText = "${device.displayName} temperature is ${map.value}${map.unit}"
+            if (descTextEnable) log.info "Temperature is ${map.value}${map.unit}"
             break
         case 3:
             logDebug "raw illuminance = $cmd.scaledSensorValue"
             map.name = "illuminance"
-            map.value = cmd.scaledSensorValue.toInteger()
+            map.value = cmd.scaledSensorValue.toInteger() // roundIt((cmd.scaledSensorValue / 2.0),0) as Integer // .toInteger()
             map.unit = "lux"
+            map.descriptionText = "${device.displayName} illuminance is ${map.value} Lux"
+            if (descTextEnable) log.info "Illuminance is ${map.value} Lux"
             break
         case 5:
             logDebug "raw humidity = $cmd.scaledSensorValue"
-            map.value = cmd.scaledSensorValue.toInteger()
+            map.value = roundIt(cmd.scaledSensorValue, 0) as Integer     // .toInteger()
             map.unit = "%"
             map.name = "humidity"
+            map.descriptionText = "${device.displayName} humidity is ${map.value}%"
+            if (descTextEnable) log.info "Humidity is ${map.value}%"
             break
         case 27:
             logDebug "raw uv index = $cmd.scaledSensorValue"
             map.name = "ultravioletIndex"
-            map.value = cmd.scaledSensorValue.toInteger()
+            map.value = roundIt(cmd.scaledSensorValue, 0) as Integer    // .toInteger()
+            map.descriptionText = "${device.displayName} ultraviolet index is ${map.value}"
+        if (descTextEnable) log.info "Ultraviolet index is ${map.value}"
             break
         default:
             map.descriptionText = cmd.toString()
@@ -383,13 +397,13 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
 def motionEvent(value) {
     def map = [name: "motion"]
     if (value) {
-        if (descTextEnable) log.info "$device.displayName motion active"
+        if (descTextEnable) log.info "Motion is active"
         map.value = "active"
-        map.descriptionText = "$device.displayName detected motion"
+        map.descriptionText = "${device.displayName} motion is active"
     } else {
-        if (descTextEnable) log.info "$device.displayName motion inactive"
+        if (descTextEnable) log.info "Motion is inactive"
         map.value = "inactive"
-        map.descriptionText = "$device.displayName motion has stopped"
+        map.descriptionText = "${device.displayName} motion is inactive"
     }
     createEvent(map)
 }
@@ -412,14 +426,18 @@ def zwaveEvent(hubitat.zwave.commands.notificationv3.NotificationReport cmd) {
             //  spec says this is 'clear previous alert'
                 //sendEvent(name: "contact", value: "closed", descriptionText: "$device.displayName is closed", displayed: true)
                 result << motionEvent(0)
-                result << createEvent(name: "tamper", value: "clear", descriptionText: "$device.displayName tamper cleared", displayed: true)
-                result << createEvent(name: "acceleration", value: "inactive", descriptionText: "$device.displayName is inactive", displayed: true)
+                result << createEvent(name: "tamper", value: "clear", descriptionText: "${device.displayName} tamper cleared", displayed: true)
+                if (descTextEnable) log.info "Tamper cleared"
+                result << createEvent(name: "acceleration", value: "inactive", descriptionText: "${device.displayName} acceleration is inactive", displayed: true)
+                if (descTextEnable) log.info "Acceleration is inactive"
                 break
             case 3:
             //  spec says this is 'tamper'
                 //sendEvent(name: "contact", value: "open", descriptionText: "$device.displayName is open", displayed: true)
-                result << createEvent(name: "tamper", value: "detected", descriptionText: "$device.displayName was tampered", displayed: true)
-                result << createEvent(name: "acceleration", value: "active", descriptionText: "$device.displayName is active", displayed: true)
+                result << createEvent(name: "tamper", value: "detected", descriptionText: "${device.displayName} tamper detected", displayed: true)
+                if (descTextEnable) log.info "Tamper detected"
+                result << createEvent(name: "acceleration", value: "active", descriptionText: "${device.displayName} acceleration is active", displayed: true)
+                if (descTextEnable) log.info "Acceleration is active"
                 break
             case 8:
             //  spec says this is 'unknown motion detection'
@@ -441,14 +459,16 @@ def zwaveEvent(hubitat.zwave.commands.configurationv1.ConfigurationReport cmd) {
     if (cmd.parameterNumber == 9 && cmd.configurationValue[0] == 0) {
         value = "dc"
         if (!isConfigured()) {
-            logDebug("ConfigurationReport: configuring device")
+            logDebug("Configuration Report: configuring device")
             result << response(configure())
         }
-        result << createEvent(name: "powerSource", value: value, displayed: false)
+        result << createEvent(name: "powerSource", value: value, descriptionText: "${device.displayName} power source is dc (mains)", displayed: false)
+        if (descTextEnable) log.info "Power source is DC (mains)"
     }
     else if (cmd.parameterNumber == 9 && cmd.configurationValue[0] == 1) {
         value = "battery"
-        result << createEvent(name: "powerSource", value: value, displayed: false)
+        result << createEvent(name: "powerSource", value: value, descriptionText: "${device.displayName} power source is battery", displayed: false)
+        if (descTextEnable) log.info "Power source is battery"
     } 
     else if (cmd.parameterNumber == 101){
         result << response(configure())
@@ -465,6 +485,10 @@ def configure() {
     // This sensor joins as a secure device if you double-click the button to include it
     if (descTextEnable) log.info "${device.displayName} is configuring its settings"
 
+    if (device.currentValue('tamper') == null) {
+        sendEvent(name: 'tamper', value: 'clear', descriptionText: '${device.displayName} tamper cleared')
+        sendEvent(name: 'acceleration', value: 'inactive', descriptionText: "$device.displayName} acceleration is inactive")
+    }
     if (motionDelayTime == null)  motionDelayTime = "1 minute"
     if (motionSensitivity == null) motionSensitivity = 3
     if (reportInterval == null) reportInterval = "5 minutes"
@@ -529,7 +553,7 @@ def configure() {
     def tf = new java.text.SimpleDateFormat("dd-MMM-yyyy h:mm a")
     tf.setTimeZone(location.getTimeZone())
     def newtime = "${tf.format(now)}" as String
-    sendEvent(name: "lastUpdate", value: newtime, descriptionText: "Configured: $newtime")
+    sendEvent(name: "lastUpdate", value: newtime, descriptionText: "${device.displayName} configured at ${newtime}")
 
     setConfigured("true")
     def waketime
@@ -765,14 +789,20 @@ def updateCheckHandler(resp, data) {
 				if (descTextEnable) log.info "You are using the current version of this driver"
 				break
 		}
+        sendEvent(name: "verUpdate", value: state.UpdateInfo)
+        sendEvent(name: "verStatus", value: state.Status)
+    }
+    else
+    {
+        log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI"
+    }
+}
 
- 	sendEvent(name: "verUpdate", value: state.UpdateInfo)
-	sendEvent(name: "verStatus", value: state.Status)
-      }
-      else
-      {
-           log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI"
-      }
+def roundIt( value, decimals=0 ) {
+	return (value == null) ? null : value.toBigDecimal().setScale(decimals, BigDecimal.ROUND_HALF_UP)
+}
+def roundIt( BigDecimal value, decimals=0) {
+    return (value == null) ? null : value.setScale(decimals, BigDecimal.ROUND_HALF_UP)
 }
 
 /*
