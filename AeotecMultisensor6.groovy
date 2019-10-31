@@ -13,6 +13,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.6.11  corrected ledOption scaling. (thanks LJP-hubitat)
  *         v1.6.10  Swapped to latest updateCheck() code.
  *         v1.6.9  Added Initialize to preset ledOptions to prevent an NPE when sending the option value to the device.
  *                 revised updateCheck to use version2.json's format.
@@ -72,7 +73,7 @@
    14. incresed range and colors for lux values, as when mine is in direct sun outside it goes as high as 1900
    15. support for celsius added. set in input options.
 */
- public static String version()      {  return "v1.6.10"  }
+ public static String version()      {  return "v1.6.11"  }
 
 metadata {
     definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy") {
@@ -607,7 +608,7 @@ def configure() {
             zwave.configurationV1.configurationSet(parameterNumber: 203, size: 2, scaledConfigurationValue: luxOffset),
 
             // Set LED Option value
-            zwave.configurationV1.configurationSet(parameterNumber: 81, size: 1, scaledConfigurationValue: ledOptions),
+            zwave.configurationV1.configurationSet(parameterNumber: 81, size: 1, configurationValue: [ledOptions]),
 
             //7. query sensor data
             zwave.batteryV1.batteryGet(),
@@ -739,7 +740,7 @@ def updateCheckHandler(resp, data) {
 	if (resp.getStatus() == 200 || resp.getStatus() == 207) {
 		respUD = parseJson(resp.data)
 		// log.warn " Version Checking - Response Data: $respUD"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
-		state.Copyright = "${thisCopyright}"
+		state.Copyright = "${thisCopyright} -- ${version()}"
 		// uses reformattted 'version2.json' 
 		def newVer = padVer(respUD.driver.(state.InternalName).ver)
 		def currentVer = padVer(version())               
@@ -776,16 +777,15 @@ def updateCheckHandler(resp, data) {
 }
 
 /*
-    padVer
+	padVer
 
-    Version progression of 1.6.9 to 1.6.10 would mis-compare unless each duple is padded first.
+	Version progression of 1.4.9 to 1.4.10 would mis-compare unless each column is padded into two-digits first.
 
 */ 
 def padVer(ver) {
-    def pad = ""
-    ver.replaceAll( "[vV]", "" ).split( /\./ ).each { pad += it.padLeft( 2, '0' ) }
-    return pad
+	def pad = ""
+	ver.replaceAll( "[vV]", "" ).split( /\./ ).each { pad += it.padLeft( 2, '0' ) }
+	return pad
 }
-
 
 def getThisCopyright(){"&copy; 2019 C Steele "}
