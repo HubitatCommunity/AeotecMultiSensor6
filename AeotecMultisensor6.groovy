@@ -13,25 +13,26 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.6.12  corrected NPE from malformed Packet. (thanks Mike Maxwell)
  *         v1.6.11  corrected ledOption scaling. (thanks LJP-hubitat)
  *         v1.6.10  Swapped to latest updateCheck() code.
- *         v1.6.9  Added Initialize to preset ledOptions to prevent an NPE when sending the option value to the device.
- *                 revised updateCheck to use version2.json's format.
- *         v1.6.8  revised Contact Sensor per @Wounded suggestion, restoring tamperAlert
- *         v1.6.7  replaced updateCheck with asynchttp version -- removed setVersion, etc.
- *                 added descTextEnable as option to reduce log.info 
- *         v1.6.6  corrected limitation on Humidity Offset
- *         v1.6.5  alternate description for settingEnabled input
- *         v1.6.4  corrected temp offset -128 to 127 in configure()
- *         v1.6.3  added Preference hiding (settingEnable)
- *         v1.6.2  removed mapping to ledOption(s)
- *         v1.6.1  added degree symbol to temp scale
- *         v1.6  deleted isStateChange throughout
- *         v1.5  Added LED Options
- *         v1.4  Added selectiveReport, enabled humidChangeAmount, luxChangeAmount
- *         v1.3  Restored logDebug as default logging is too much. cSteele
- *         v1.2  Merged Chuckles updates
- *         v1.1d Added remote version checking ** Cobra (CobraVmax) for his original version check code
+ *         v1.6.9   Added Initialize to preset ledOptions to prevent an NPE when sending the option value to the device.
+ *                  revised updateCheck to use version2.json's format.
+ *         v1.6.8   revised Contact Sensor per @Wounded suggestion, restoring tamperAlert
+ *         v1.6.7   replaced updateCheck with asynchttp version -- removed setVersion, etc.
+ *                  added descTextEnable as option to reduce log.info 
+ *         v1.6.6   corrected limitation on Humidity Offset
+ *         v1.6.5   alternate description for settingEnabled input
+ *         v1.6.4   corrected temp offset -128 to 127 in configure()
+ *         v1.6.3   added Preference hiding (settingEnable)
+ *         v1.6.2   removed mapping to ledOption(s)
+ *         v1.6.1   added degree symbol to temp scale
+ *         v1.6     deleted isStateChange throughout
+ *         v1.5     Added LED Options
+ *         v1.4     Added selectiveReport, enabled humidChangeAmount, luxChangeAmount
+ *         v1.3     Restored logDebug as default logging is too much. cSteele
+ *         v1.2     Merged Chuckles updates
+ *         v1.1d    Added remote version checking ** Cobra (CobraVmax) for his original version check code
  * csteele v1.1c converted to Hubitat.
  *
  * Chuckles V1.2 of multisensor 6
@@ -73,7 +74,7 @@
    14. incresed range and colors for lux values, as when mine is in direct sun outside it goes as high as 1900
    15. support for celsius added. set in input options.
 */
- public static String version()      {  return "v1.6.11"  }
+ public static String version()      {  return "v1.6.12"  }
 
 metadata {
     definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy") {
@@ -336,6 +337,7 @@ def zwaveEvent(hubitat.zwave.commands.batteryv1.BatteryReport cmd) {
 def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport cmd){
     logDebug "In multi level report cmd = $cmd"
 
+    if (cmd.scaledSensorValue == null) return
     def map = [:]
     switch (cmd.sensorType) {
         case 1:
@@ -779,7 +781,7 @@ def updateCheckHandler(resp, data) {
 /*
 	padVer
 
-	Version progression of 1.4.9 to 1.4.10 would mis-compare unless each column is padded into two-digits first.
+	Version progression of 1.4.9 to 1.4.10 would mis-compare unless each duple is padded first.
 
 */ 
 def padVer(ver) {
