@@ -95,9 +95,9 @@ metadata {
 	  // command    "updateCheck"			// **---** delete for Release
 
         attribute  "firmware", "decimal"
-        attribute  "lastUpdate", "string"
-        attribute  "verUpdate", "string"
-        attribute  "verStatus", "string"
+        // attribute  "lastUpdate", "string"
+        // attribute  "verUpdate", "string"
+        // attribute  "verStatus", "string"
 
         fingerprint deviceId: "0x2101", inClusters: "0x5E,0x86,0x72,0x59,0x85,0x73,0x71,0x84,0x80,0x30,0x31,0x70,0x7A", outClusters: "0x5A"
     }
