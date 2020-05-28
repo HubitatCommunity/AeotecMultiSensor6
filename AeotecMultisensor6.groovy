@@ -13,6 +13,8 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.6.13  version report NPE (thanks Christi999)
+ *		    	    tempOffset to "as Int"
  *         v1.6.12  corrected NPE from malformed Packet. (thanks Mike Maxwell)
  *         v1.6.11  corrected ledOption scaling. (thanks LJP-hubitat)
  *    BAB  v1.6.10a Changed to HALF_ROUND_UP, standardized DescriptionText
@@ -33,8 +35,6 @@
  *         v1.4     Added selectiveReport, enabled humidChangeAmount, luxChangeAmount
  *         v1.3     Restored logDebug as default logging is too much. cSteele
  *         v1.2     Merged Chuckles updates
- *         v1.1d    Added remote version checking ** Cobra (CobraVmax) for his original version check code
- * csteele v1.1c converted to Hubitat.
  *
  * Chuckles V1.2 of multisensor 6
  * IMPORTANT NOTE: Assumes device has firmware version 1.10 or later. A warning will be logged if this is not the case.
@@ -53,6 +53,9 @@
    11. Numerous minor bug fixes (e.g. motionDelayTime and reportInterval should always hold enumerated values, not number of seconds)
    12. Numerous small changes for internationalisation (e.g. region agnostic date formats)
 
+ *         v1.1d    Added remote version checking ** Cobra (CobraVmax) for his original version check code
+ * csteele v1.1c converted to Hubitat.
+ *
  * LGK V1 of multisensor 6 with customizeable settings , changed some timeouts, also changed tamper to vibration so we can
  * use that as well (based on stock device type and also some changes copied from Robert Vandervoort device type.
  * Changes
@@ -75,7 +78,7 @@
    14. incresed range and colors for lux values, as when mine is in direct sun outside it goes as high as 1900
    15. support for celsius added. set in input options.
 */
- public static String version()      {  return "v1.6.12"  }
+ public static String version()      {  return "v1.6.13"  }
 
 metadata {
     definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy") {
@@ -545,7 +548,7 @@ def configure() {
     logDebug "In configure: Report Interval = $settings.reportInterval"
     logDebug "Motion Delay Time = $settings.motionDelayTime"
     logDebug "Motion Sensitivity = $settings.motionSensitivity"
-    logDebug "Temperature adjust = $settings.tempOffset"
+    logDebug "Temperature adjust = $settings.tempOffset (${settings.tempOffset/10})"
     logDebug "Humidity adjust = $settings.humidOffset"
     logDebug "Temp Scale = $settings.tempScale"
     logDebug "Min Temp change for reporting = $settings.tempChangeAmount"
@@ -567,8 +570,7 @@ def configure() {
     else waketime = 300
 
     logDebug "wake time reset to $waketime"
-
-    logDebug "Current firmware: $device.currentFirmware"
+    logDebug "Current firmware: ${sprintf ("%1.2f", state.firmware)}"
 
     // Retrieve local temperature scale: "C" = Celsius, "F" = Fahrenheit
     // Convert to a value of 1 or 2 as used by the device to select the scale
@@ -626,7 +628,7 @@ def configure() {
             zwave.configurationV1.configurationSet(parameterNumber: 0x05, size: 1, scaledConfigurationValue: 2),
 
             // Set temperature calibration offset
-            zwave.configurationV1.configurationSet(parameterNumber: 201, size: 2, configurationValue: [tempOffset, tempScaleByte]),
+            zwave.configurationV1.configurationSet(parameterNumber: 201, size: 2, configurationValue: [tempOffset as int, tempScaleByte]),
 
             // Set humidity calibration offset
             zwave.configurationV1.configurationSet(parameterNumber: 202, size: 1, scaledConfigurationValue: humidOffset),
@@ -715,10 +717,13 @@ def zwaveEvent(hubitat.zwave.commands.versionv1.VersionCommandClassReport cmd) {
 def zwaveEvent(hubitat.zwave.commands.versionv1.VersionReport cmd) {
     logDebug "in version report"
     // SubVersion is in 1/100ths so that 1.01 < 1.08 < 1.10, etc.
-    BigDecimal fw = cmd.applicationVersion + (cmd.applicationSubVersion / 100)
-    state.firmware = fw
-    logDebug "---VERSION REPORT V1--- ${device.displayName} is running firmware version: ${String.format("%.2f",fw)}, Z-Wave version: ${cmd.zWaveProtocolVersion}.${cmd.zWaveProtocolSubVersion}"
-    if(fw < 1.10)
+    state.firmware = 0.0d
+    if (cmd.firmware0Version) {
+        BigDecimal fw = cmd.firmware0Version + (cmd.firmware0SubVersion/100)
+        state.firmware = fw
+    }
+    logDebug "---VERSION REPORT V1--- ${device.displayName} is running firmware version: ${String.format("%1.2f",state.firmware)}, Z-Wave version: ${cmd.zWaveProtocolVersion}.${cmd.zWaveProtocolSubVersion}"
+    if(state.firmware < 1.10)
         log.warn "--- WARNING: Device handler expects devices to have firmware 1.10 or later"
 }
 
@@ -748,6 +753,8 @@ private dbCleanUp() {
     state.remove("sensorTemp")
     state.remove("author")
     state.remove("Copyright")
+    state.remove("verUpdate")
+    state.remove("verStatus")
 }
 
 
@@ -793,8 +800,8 @@ def updateCheckHandler(resp, data) {
 				if (descTextEnable) log.info "You are using the current version of this driver"
 				break
 		}
-        sendEvent(name: "verUpdate", value: state.UpdateInfo)
-        sendEvent(name: "verStatus", value: state.Status)
+ 	sendEvent(name: "chkUpdate", value: state.UpdateInfo)
+	sendEvent(name: "chkStatus", value: state.Status)
     }
     else
     {
