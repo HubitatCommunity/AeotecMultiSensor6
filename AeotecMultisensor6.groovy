@@ -505,6 +505,7 @@ def configure() {
     if (tempOffset == null) tempOffset = 0
     if (humidOffset == null) humidOffset = 0
     if (luxOffset == null) luxOffset = 0
+    state.firmware = 0.0d
     selectiveReport = selectiveReporting ? 1 : 0
     if (motionSensitivity < 0) {
         logDebug "Motion sensitivity too low ... resetting to 0"
