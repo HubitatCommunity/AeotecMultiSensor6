@@ -549,7 +549,7 @@ def configure() {
     logDebug "In configure: Report Interval = $settings.reportInterval"
     logDebug "Motion Delay Time = $settings.motionDelayTime"
     logDebug "Motion Sensitivity = $settings.motionSensitivity"
-    logDebug "Temperature adjust = $settings.tempOffset (${settings.tempOffset/10})"
+    logDebug "Temperature adjust = $settings.tempOffset"
     logDebug "Humidity adjust = $settings.humidOffset"
     logDebug "Temp Scale = $settings.tempScale"
     logDebug "Min Temp change for reporting = $settings.tempChangeAmount"
