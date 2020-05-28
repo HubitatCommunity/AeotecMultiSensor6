@@ -5,6 +5,6 @@
 	"application": {
 	},
 	"driver": {
-		"AeotecMultiSensor6":  {"ver": "1.6.12", "updated": "01/11/2019"}
+		"AeotecMultiSensor6":  {"ver": "1.6.13", "updated": "05/28/2020"}
 	}
 }
