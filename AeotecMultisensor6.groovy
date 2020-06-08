@@ -13,6 +13,17 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.7     refactored using inputValidationCheck
+ *		    	    added de-duplication code for Motion Events (motion Events can occur in <1ms)
+ *                    |  Motion reports (unsolicited) are duplicated: a NotificationReport (7) plus either: 
+ *			    |    (1) for basicSet; (2) for sensorBinary set via Param 5. 
+ *                    |  Motion Detection via NotificationReport can be considered a duplicate. 
+ *			    |  This version removes motion event processing from NotificationReport relying
+ *                    |    on basicSet or SensorBinary.
+ *                    |  Added detail to Motion is... to identify the path.
+ *		    	    removed duplicate call to config()
+ *			    lots of cosmetic formatting cleanup, cosmetic reordering of modules 
+ *
  *         v1.6.13  version report NPE (thanks Christi999)
  *		    	    tempOffset to "as Int"
  *         v1.6.12  corrected NPE from malformed Packet. (thanks Mike Maxwell)
@@ -33,7 +44,7 @@
  *         v1.6     deleted isStateChange throughout
  *         v1.5     Added LED Options
  *         v1.4     Added selectiveReport, enabled humidChangeAmount, luxChangeAmount
- *         v1.3     Restored logDebug as default logging is too much. cSteele
+ *         v1.3     Restored if (debugOutput) log.debug as default logging is too much. cSteele
  *         v1.2     Merged Chuckles updates
  *
  * Chuckles V1.2 of multisensor 6
@@ -78,7 +89,8 @@
    14. incresed range and colors for lux values, as when mine is in direct sun outside it goes as high as 1900
    15. support for celsius added. set in input options.
 */
- public static String version()      {  return "v1.6.13"  }
+
+ public static String version()      {  return "v1.7"  }
 
 metadata {
     definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy") {
@@ -98,9 +110,6 @@ metadata {
 	  // command    "updateCheck"			// **---** delete for Release
 
         attribute  "firmware", "decimal"
-        // attribute  "lastUpdate", "string"
-        // attribute  "verUpdate", "string"
-        // attribute  "verStatus", "string"
 
         fingerprint deviceId: "0x2101", inClusters: "0x5E,0x86,0x72,0x59,0x85,0x73,0x71,0x84,0x80,0x30,0x31,0x70,0x7A", outClusters: "0x5A"
     }
@@ -142,9 +151,14 @@ metadata {
 }
 
 
+/*
+	updated
+    
+	When "Save Preferences" gets clicked...
+*/
 def updated() {
-    logDebug "In Updated with settings: ${settings}"
-    logDebug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
+    if (debugOutput) log.debug "In Updated with settings: ${settings}"
+    if (debugOutput) log.debug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
     unschedule()
     initialize()
     dbCleanUp()		// remove antique db entries created in older versions and no longer used.
@@ -154,507 +168,443 @@ def updated() {
     runIn(20, updateCheck) 
 
     // Check for any null settings and change them to default values
-    if (motionDelayTime == null)  motionDelayTime = "1 minute"
-    if (motionSensitivity == null) motionSensitivity = 3
-    if (reportInterval == null) reportInterval = "5 minutes"
-    if (tempChangeAmount == null) tempChangeAmount = 2
-    if (humidChangeAmount == null) humidChangeAmount = 10
-    if (luxChangeAmount == null) luxChangeAmount = 100
-    if (tempOffset == null) tempOffset = 0
-    if (humidOffset == null) humidOffset = 0
-    if (luxOffset == null) luxOffset = 0
-    if (ledOptions == null) ledOptions = 0
-    
-    selectiveReport = selectiveReporting ? 1 : 0
-
-    if (motionSensitivity < 0)
-    {
-        logDebug "Illegal motion sensitivity ... resetting to 0!"
-        motionSensitivity = 0
-    }
-
-    if (motionSensitivity > 5)
-    {
-        logDebug "Illegal motion sensitivity ... resetting to 5!"
-        motionSensitivity = 5
-    }
-
-    // fix temp offset
-    if (tempOffset < -128)
-    {
-        tempOffset = -128
-        logDebug "Temperature Offset too low... resetting to -128 (-12.8 degrees)"
-    }
-
-    if (tempOffset > 127)
-    {
-        tempOffset = 127
-        logDebug "Temperature Offset too high ... resetting to 127 (+12.7 degrees)"
-    }
-
-    // fix humidity offset
-    if (humidOffset < -50)
-    {
-        humidOffset = -50
-        logDebug "Humidity Offset too low... resetting to -50%"
-    }
-
-    if (humidOffset > 50)
-    {
-        humidOffset = 50
-        logDebug "Humidity Adjusment too high ... resetting to +50%"
-    }
-
-    // fix lux offset
-    if (luxOffset < -1000)
-    {
-        luxOffset = -1000
-        logDebug "Luminance Offset too low ... resetting to -1000LUX"
-    }
-
-    if (luxOffset > 1000)
-    {
-        luxOffset = 1000
-        logDebug "Luminance Offset too high ... resetting to +1000LUX"
-    }
+    inputValidationCheck()
 
     if (device.latestValue("powerSource") == "dc") {  //case1: USB powered
-        response(configure())
-    } else if (device.latestValue("powerSource") == "battery") {  //case2: battery powered
-        // setConfigured("false") is used by WakeUpNotification
-        setConfigured("false") //wait until the next time device wakeup to send configure command after user change preference
-        selectiveReport = 0 // battery, selective reporting is not supported
-    } else { //case3: power source is not identified, ask user to properly pair the sensor again
-        log.warn "power source is not identified, check it sensor is powered by USB, if so > configure()"
-        def request = []
-        request << zwave.configurationV1.configurationGet(parameterNumber: 101)
-        response(commands(request))
+      //  response(configure(2))
+    	} else if (device.latestValue("powerSource") == "battery") {  //case2: battery powered
+    	    // setConfigured("false") is used by WakeUpNotification
+    	    setConfigured("false") //wait until the next time device wakeup to send configure command after user change preference
+    	    selectiveReport = 0 // battery, selective reporting is not supported
+    	} else { //case3: power source is not identified, ask user to properly pair the sensor again
+    	    log.warn "power source is not identified, check that sensor is powered by USB, if so > configure()"
+    	    def request = []
+    	    request << zwave.configurationV1.configurationGet(parameterNumber: 101)
+    	    response(commands(request))
     }
-    return(configure())
+    return(configure(1))
 }
 
-def logsOff(){
-    log.warn "debug logging disabled..."
-    device.updateSetting("debugOutput",[value:"false",type:"bool"])
-}
 
-def SettingsOff(){
-    log.warn "Settings disabled..."
-    device.updateSetting("settingEnable",[value:"false",type:"bool"])
-}
-
+/*
+	parse
+    
+	Respond to received zwave commands.
+*/
 def parse(String description) {
-    // log.debug "In parse() for description: $description"
-    def result = null
-    if (description.startsWith("Err 106")) {
-        log.warn "parse() >> Err 106"
-        result = createEvent( name: "secureInclusion", value: "failed",
-                             descriptionText: "This sensor (${device.displayName}) failed to complete the network security key exchange. If you are unable to control it via Hubitat, you must remove it from your network and add it again.")
-    } else if (description != "updated") {
-        // log.debug "About to zwave.parse($description)"
-        def cmd = zwave.parse(description, [0x31: 5, 0x30: 1, 0x70: 1, 0x72: 1, 0x84: 1])
-        if (cmd) {
-            // log.debug "About to call handler for ${cmd.toString()}"
-            result = zwaveEvent(cmd)
-        }
-    }
-    //log.debug "After zwaveEvent(cmd) >> Parsed '${description}' to ${result.inspect()}"
-    return result
+	// log.debug "In parse() for description: $description"
+	def result = null
+	if (description.startsWith("Err 106")) {
+	    log.warn "parse() >> Err 106"
+	    result = createEvent( name: "secureInclusion", value: "failed",
+	                         descriptionText: "This sensor (${device.displayName}) failed to complete the network security key exchange. If you are unable to control it via Hubitat, you must remove it from your network and add it again.")
+	} else if (description != "updated") {
+	    // log.debug "About to zwave.parse($description)"
+	    def cmd = zwave.parse(description, [0x31: 5, 0x30: 1, 0x70: 1, 0x72: 1, 0x84: 1])
+	    if (cmd) {
+	        // log.debug "About to call handler for ${cmd.toString()}"
+	        result = zwaveEvent(cmd)
+	    }
+	}
+	//log.debug "After zwaveEvent(cmd) >> Parsed '${description}' to ${result.inspect()}"
+	return result
 }
+
+
+/*
+	installed
+    
+	Doesn't do much other than call initialize().
+*/
+void installed()
+{
+	initialize()
+}
+
+
+
+/*
+	initialize
+    
+	Doesn't do much.
+*/
+def initialize() {
+	if (settings.ledOptions == null) settings.ledOptions = 0 // default to Full
+	state.firmware = state.firmware ?: 0.0d
+}
+
+
+/*
+	Beginning of Z-Wave Commands
+*/
 
 //this notification will be sent only when device is battery powered
 def zwaveEvent(hubitat.zwave.commands.wakeupv1.WakeUpNotification cmd) {
-    def result = [createEvent(descriptionText: "${device.displayName} woke up")]
-    def cmds = []
-    if (!isConfigured()) {
-        logDebug("late configure")
-        result << response(configure())
-    } else {
-        //logDebug("Device has been configured sending >> wakeUpNoMoreInformation()")
-        cmds << zwave.wakeUpV1.wakeUpNoMoreInformation().format()
-        result << response(cmds)
-    }
-    result
+	def result = [createEvent(descriptionText: "${device.displayName} woke up")]
+	def cmds = []
+	if (!isConfigured()) {
+	    if (debugOutput) log.debug("late configure")
+	    result << response(configure(3))
+	} else {
+	    //if (debugOutput) log.debug("Device has been configured sending >> wakeUpNoMoreInformation()")
+	    cmds << zwave.wakeUpV1.wakeUpNoMoreInformation().format()
+	    result << response(cmds)
+	}
+	result
 }
+
 
 def zwaveEvent(hubitat.zwave.commands.securityv1.SecurityMessageEncapsulation cmd) {
-    def encapsulatedCommand = cmd.encapsulatedCommand([0x31: 5, 0x30: 1, 0x70: 1, 0x72: 1, 0x84: 1])
-    state.sec = 1
-    logDebug "encapsulated: ${encapsulatedCommand}"
-    if (encapsulatedCommand) {
-        zwaveEvent(encapsulatedCommand)
-    } else {
-        log.warn "Unable to extract encapsulated cmd from $cmd"
-        createEvent(descriptionText: cmd.toString())
-    }
+	def encapsulatedCommand = cmd.encapsulatedCommand([0x31: 5, 0x30: 1, 0x70: 1, 0x72: 1, 0x84: 1])
+	state.sec = 1
+	if (debugOutput) log.debug "encapsulated: ${encapsulatedCommand}"
+	if (encapsulatedCommand) {
+	    zwaveEvent(encapsulatedCommand)
+	} else {
+	    log.warn "Unable to extract encapsulated cmd from $cmd"
+	    createEvent(descriptionText: cmd.toString())
+	}
 }
+
 
 def zwaveEvent(hubitat.zwave.commands.securityv1.SecurityCommandsSupportedReport cmd) {
-    if (descTextEnable) log.info "Executing zwaveEvent 98 (SecurityV1): 03 (SecurityCommandsSupportedReport) with cmd: $cmd"
-    state.sec = 1
+	if (descTextEnable) log.info "Executing zwaveEvent 98 (SecurityV1): 03 (SecurityCommandsSupportedReport) with cmd: $cmd"
+	state.sec = 1
 }
+
 
 def zwaveEvent(hubitat.zwave.commands.securityv1.NetworkKeyVerify cmd) {
-    state.sec = 1
-    if (descTextEnable) log.info "Executing zwaveEvent 98 (SecurityV1): 07 (NetworkKeyVerify) with cmd: $cmd (node is securely included)"
-    def result = [createEvent(name:"secureInclusion", value:"success", descriptionText:"${device.displayName} - Secure inclusion was successful")]
-    result
+	state.sec = 1
+	if (descTextEnable) log.info "Executing zwaveEvent 98 (SecurityV1): 07 (NetworkKeyVerify) with cmd: $cmd (node is securely included)"
+	def result = [createEvent(name:"secureInclusion", value:"success", descriptionText:"${device.displayName} - Secure inclusion was successful")]
+	result
 }
+
 
 def zwaveEvent(hubitat.zwave.commands.manufacturerspecificv1.ManufacturerSpecificReport cmd) {
-    logDebug "ManufacturerSpecificReport cmd = $cmd"
-
-    logDebug "manufacturerId:   ${cmd.manufacturerId}"
-    logDebug "manufacturerName: ${cmd.manufacturerName}"
-    logDebug "productId:        ${cmd.productId}"
-    def model = ""   // We'll decode the specific model for the log, but we don't currently use this info
-    switch(cmd.productTypeId >> 8) {
-        case 0: model = "EU"
-                break
-        case 1: model = "US"
-                break
-        case 2: model = "AU"
-                break
-        case 10: model = "JP"
-                break
-        case 29: model = "CN"
-                break
-        default: model = "unknown"
-    }
-    logDebug "model:            ${model}"
-    logDebug "productTypeId:    ${cmd.productTypeId}"
-    def msr = String.format("%04X-%04X-%04X", cmd.manufacturerId, cmd.productTypeId, cmd.productId)
-    updateDataValue("MSR", msr)
+	if (debugOutput) log.debug "ManufacturerSpecificReport cmd = $cmd"
+	if (debugOutput) log.debug "manufacturerId:   ${cmd.manufacturerId}"
+	if (debugOutput) log.debug "manufacturerName: ${cmd.manufacturerName}"
+	if (debugOutput) log.debug "productId:        ${cmd.productId}"
+	def model = ""   // We'll decode the specific model for the log, but we don't currently use this info
+	switch(cmd.productTypeId >> 8) {
+	    case 0: model = "EU"
+	            break
+	    case 1: model = "US"
+	            break
+	    case 2: model = "AU"
+	            break
+	    case 10: model = "JP"
+	            break
+	    case 29: model = "CN"
+	            break
+	    default: model = "unknown"
+	}
+	if (debugOutput) log.debug "model:            ${model}"
+	if (debugOutput) log.debug "productTypeId:    ${cmd.productTypeId}"
+	def msr = String.format("%04X-%04X-%04X", cmd.manufacturerId, cmd.productTypeId, cmd.productId)
+	updateDataValue("MSR", msr)
 }
+
 
 def zwaveEvent(hubitat.zwave.commands.batteryv1.BatteryReport cmd) {
-    logDebug "In BatteryReport"
-    def result = []
-    def map = [ name: "battery", unit: "%" ]
-    if (cmd.batteryLevel == 0xFF) {
-        map.value = 1
-        map.descriptionText = "${device.displayName} battery is low"
-    } else {
-        map.value = cmd.batteryLevel
-        map.descriptionText = "${device.displayName} battery is ${map.value}%"
-    }
-
-    createEvent(map)
+	if (debugOutput) log.debug "In BatteryReport"
+	def result = []
+	def map = [ name: "battery", unit: "%" ]
+	if (cmd.batteryLevel == 0xFF) {
+	    map.value = 1
+	    map.descriptionText = "${device.displayName} battery is low"
+	} else {
+	    map.value = cmd.batteryLevel
+	    map.descriptionText = "${device.displayName} battery is ${map.value}%"
+	}
+	createEvent(map)
 }
+
 
 def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport cmd){
-    logDebug "In multi level report cmd = $cmd"
+	if (debugOutput) log.debug "In multi level report cmd = $cmd"
 
-    if (cmd.scaledSensorValue == null) return
-    def map = [:]
-    switch (cmd.sensorType) {
-        case 1:
-            logDebug "raw temp = $cmd.scaledSensorValue"
-/*
-            def now = new Date()
-            def tf = new java.text.SimpleDateFormat("dd-MMM-yyyy h:mm a")
-            tf.setTimeZone(location.getTimeZone())
-            def newtime = "${tf.format(now)}" as String
-            boolean isChange = isStateChange(device, "lastUpdate", newTime)
-            log.debug "isChange: ${isChange}"
-            if (isChange) sendEvent(name: "lastUpdate", value: newtime, descriptionText: "Updated at $newtime", isStateChange: true) // ${debugOutput?tf.getTimeZone():''}")
+	if (cmd.scaledSensorValue == null) return
+	def map = [:]
+	switch (cmd.sensorType) {
+	    case 1:
+	        if (debugOutput) log.debug "raw temp = $cmd.scaledSensorValue"
+	        // Convert temperature (if needed) to the system's configured temperature scale
+	        def finalval = convertTemperatureIfNeeded(cmd.scaledSensorValue, cmd.scale == 1 ? "F" : "C", cmd.precision)
 
-            logDebug "scaled sensor value = $cmd.scaledSensorValue  scale = $cmd.scale  precision = $cmd.precision"
-*/
-            // Convert temperature (if needed) to the system's configured temperature scale
-            def finalval = convertTemperatureIfNeeded(cmd.scaledSensorValue, cmd.scale == 1 ? "F" : "C", cmd.precision)
+	        if (debugOutput) log.debug "finalval = $finalval"
 
-            logDebug "finalval = $finalval"
-
-            map.value = finalval
-            map.unit = "\u00b0" + getTemperatureScale()
-            map.name = "temperature"
-            map.descriptionText = "${device.displayName} temperature is ${map.value}${map.unit}"
-            if (descTextEnable) log.info "Temperature is ${map.value}${map.unit}"
-            break
-        case 3:
-            logDebug "raw illuminance = $cmd.scaledSensorValue"
-            map.name = "illuminance"
-            map.value = cmd.scaledSensorValue.toInteger() // roundIt((cmd.scaledSensorValue / 2.0),0) as Integer // .toInteger()
-            map.unit = "lux"
-            map.descriptionText = "${device.displayName} illuminance is ${map.value} Lux"
-            if (descTextEnable) log.info "Illuminance is ${map.value} Lux"
-            break
-        case 5:
-            logDebug "raw humidity = $cmd.scaledSensorValue"
-            map.value = roundIt(cmd.scaledSensorValue, 0) as Integer     // .toInteger()
-            map.unit = "%"
-            map.name = "humidity"
-            map.descriptionText = "${device.displayName} humidity is ${map.value}%"
-            if (descTextEnable) log.info "Humidity is ${map.value}%"
-            break
-        case 27:
-            logDebug "raw uv index = $cmd.scaledSensorValue"
-            map.name = "ultravioletIndex"
-            map.value = roundIt(cmd.scaledSensorValue, 0) as Integer    // .toInteger()
-            map.descriptionText = "${device.displayName} ultraviolet index is ${map.value}"
-        if (descTextEnable) log.info "Ultraviolet index is ${map.value}"
-            break
-        default:
-            map.descriptionText = cmd.toString()
-    }
-    createEvent(map)
+	        map.value = finalval
+	        map.unit = "\u00b0" + getTemperatureScale()
+	        map.name = "temperature"
+	        map.descriptionText = "${device.displayName} temperature is ${map.value}${map.unit}"
+	        if (descTextEnable) log.info "Temperature is ${map.value}${map.unit}"
+	        break
+	    case 3:
+	        if (debugOutput) log.debug "raw illuminance = $cmd.scaledSensorValue"
+	        map.name = "illuminance"
+	        map.value = cmd.scaledSensorValue.toInteger() // roundIt((cmd.scaledSensorValue / 2.0),0) as Integer // .toInteger()
+	        map.unit = "lux"
+	        map.descriptionText = "${device.displayName} illuminance is ${map.value} Lux"
+	        if (descTextEnable) log.info "Illuminance is ${map.value} Lux"
+	        break
+	    case 5:
+	        if (debugOutput) log.debug "raw humidity = $cmd.scaledSensorValue"
+	        map.value = roundIt(cmd.scaledSensorValue, 0) as Integer     // .toInteger()
+	        map.unit = "%"
+	        map.name = "humidity"
+	        map.descriptionText = "${device.displayName} humidity is ${map.value}%"
+	        if (descTextEnable) log.info "Humidity is ${map.value}%"
+	        break
+	    case 27:
+	        if (debugOutput) log.debug "raw uv index = $cmd.scaledSensorValue"
+	        map.name = "ultravioletIndex"
+	        map.value = roundIt(cmd.scaledSensorValue, 0) as Integer    // .toInteger()
+	        map.descriptionText = "${device.displayName} ultraviolet index is ${map.value}"
+	    if (descTextEnable) log.info "Ultraviolet index is ${map.value}"
+	        break
+	    default:
+	        map.descriptionText = cmd.toString()
+	}
+	createEvent(map)
 }
 
-def motionEvent(value) {
-    def map = [name: "motion"]
-    if (value) {
-        if (descTextEnable) log.info "Motion is active"
-        map.value = "active"
-        map.descriptionText = "${device.displayName} motion is active"
-    } else {
-        if (descTextEnable) log.info "Motion is inactive"
-        map.value = "inactive"
-        map.descriptionText = "${device.displayName} motion is inactive"
-    }
-    createEvent(map)
-}
 
 def zwaveEvent(hubitat.zwave.commands.sensorbinaryv1.SensorBinaryReport cmd) {
-    motionEvent(cmd.sensorValue)
+	motionEvent(cmd.sensorValue, "SensorBinaryReport")
 }
+
 
 def zwaveEvent(hubitat.zwave.commands.basicv1.BasicSet cmd) {
-    // Sensor sends value 0xFF on motion, 0x00 on no motion (after expiry interval)
-    motionEvent(cmd.value)
+	// Sensor sends value 0xFF on motion, 0x00 on no motion (after expiry interval)
+	motionEvent(cmd.value, "BasicSet")
 }
+
 
 def zwaveEvent(hubitat.zwave.commands.notificationv3.NotificationReport cmd) {
-    def result = []
-    if (cmd.notificationType == 7) {
-    //  spec says type 7 is 'Home Security'
-        switch (cmd.event) {
-            case 0:
-            //  spec says this is 'clear previous alert'
-                //sendEvent(name: "contact", value: "closed", descriptionText: "$device.displayName is closed", displayed: true)
-                result << motionEvent(0)
-                result << createEvent(name: "tamper", value: "clear", descriptionText: "${device.displayName} tamper cleared", displayed: true)
-                if (descTextEnable) log.info "Tamper cleared"
-                result << createEvent(name: "acceleration", value: "inactive", descriptionText: "${device.displayName} acceleration is inactive", displayed: true)
-                if (descTextEnable) log.info "Acceleration is inactive"
-                break
-            case 3:
-            //  spec says this is 'tamper'
-                //sendEvent(name: "contact", value: "open", descriptionText: "$device.displayName is open", displayed: true)
-                result << createEvent(name: "tamper", value: "detected", descriptionText: "${device.displayName} tamper detected", displayed: true)
-                if (descTextEnable) log.info "Tamper detected"
-                result << createEvent(name: "acceleration", value: "active", descriptionText: "${device.displayName} acceleration is active", displayed: true)
-                if (descTextEnable) log.info "Acceleration is active"
-                break
-            case 8:
-            //  spec says this is 'unknown motion detection'
-                result << motionEvent(1)
-                break
-        }
-    } else {
-        log.warn "Need to handle this cmd.notificationType: ${cmd.notificationType}"
-        result << createEvent(descriptionText: cmd.toString())
-    }
-    result
+	if (debugOutput) log.debug "NotificationReport: ${cmd}"
+	def result = []
+	if (cmd.notificationType == 7) {
+	//  spec says type 7 is 'Home Security'
+	    switch (cmd.event) {
+	        case 0:
+	        //  spec says this is 'clear previous alert'
+	            //sendEvent(name: "contact", value: "closed", descriptionText: "$device.displayName is closed", displayed: true)
+	     //       result << motionEvent(0, "NotificationReport")  // see Change Note for v1.7
+	            result << createEvent(name: "tamper", value: "clear", descriptionText: "${device.displayName} tamper cleared", displayed: true)
+	            if (descTextEnable) log.info "Tamper cleared by NotificationReport"
+	            result << createEvent(name: "acceleration", value: "inactive", descriptionText: "${device.displayName} acceleration is inactive", displayed: true)
+	            if (descTextEnable) log.info "Acceleration is inactive by NotificationReport"
+	            break
+	        case 3:
+	        //  spec says this is 'tamper'
+	            //sendEvent(name: "contact", value: "open", descriptionText: "$device.displayName is open", displayed: true)
+	            result << createEvent(name: "tamper", value: "detected", descriptionText: "${device.displayName} tamper detected", displayed: true)
+	            if (descTextEnable) log.info "Tamper detected"
+	            result << createEvent(name: "acceleration", value: "active", descriptionText: "${device.displayName} acceleration is active", displayed: true)
+	            if (descTextEnable) log.info "Acceleration is active"
+	            break
+	        case 8:
+	        //  spec says this is 'unknown motion detection'
+	      //      result << motionEvent(1, "NotificationReport")  // see Change Note for v1.7
+	            break
+	    }
+	} else {
+	    log.warn "Need to handle this cmd.notificationType: ${cmd.notificationType}"
+	    result << createEvent(descriptionText: cmd.toString())
+	}
+	result
 }
+
 
 def zwaveEvent(hubitat.zwave.commands.configurationv1.ConfigurationReport cmd) {
-    logDebug "---CONFIGURATION REPORT V1--- ${device.displayName} parameter ${cmd.parameterNumber} with a byte size of ${cmd.size} is set to ${cmd.configurationValue}"
-
-    def result = []
-    def value
-    if (cmd.parameterNumber == 9 && cmd.configurationValue[0] == 0) {
-        value = "dc"
-        if (!isConfigured()) {
-            logDebug("Configuration Report: configuring device")
-            result << response(configure())
-        }
-        result << createEvent(name: "powerSource", value: value, descriptionText: "${device.displayName} power source is dc (mains)", displayed: false)
-        if (descTextEnable) log.info "Power source is DC (mains)"
-    }
-    else if (cmd.parameterNumber == 9 && cmd.configurationValue[0] == 1) {
-        value = "battery"
-        result << createEvent(name: "powerSource", value: value, descriptionText: "${device.displayName} power source is battery", displayed: false)
-        if (descTextEnable) log.info "Power source is battery"
-    } 
-    else if (cmd.parameterNumber == 101){
-        result << response(configure())
-    }
-    result
+	if (debugOutput) log.debug "---CONFIGURATION REPORT V1--- ${device.displayName} parameter ${cmd.parameterNumber} with a byte size of ${cmd.size} is set to ${cmd.configurationValue}"
+	def result = []
+	def value
+	if (cmd.parameterNumber == 9 && cmd.configurationValue[0] == 0) {
+	    value = "dc"
+	    if (!isConfigured()) {
+	        if (debugOutput) log.debug("Configuration Report: configuring device")
+	        result << response(configure(4))
+	    }
+	    result << createEvent(name: "powerSource", value: value, descriptionText: "${device.displayName} power source is dc (mains)", displayed: false)
+	    if (descTextEnable) log.info "Power source is DC (mains)"
+	}
+	else if (cmd.parameterNumber == 9 && cmd.configurationValue[0] == 1) {
+	    value = "battery"
+	    result << createEvent(name: "powerSource", value: value, descriptionText: "${device.displayName} power source is battery", displayed: false)
+	    if (descTextEnable) log.info "Power source is battery"
+	} 
+	else if (cmd.parameterNumber == 101){
+	    result << response(configure(5))
+	}
+	result
 }
+
 
 def zwaveEvent(hubitat.zwave.Command cmd) {
-    logDebug "General zwaveEvent cmd: ${cmd}"
-    createEvent(descriptionText: cmd.toString(), isStateChange: false)
+	if (debugOutput) log.debug "General zwaveEvent cmd: ${cmd}"
+	createEvent(descriptionText: cmd.toString(), isStateChange: false)
 }
 
-def configure() {
-    // This sensor joins as a secure device if you double-click the button to include it
-    if (descTextEnable) log.info "${device.displayName} is configuring its settings"
 
-    if (device.currentValue('tamper') == null) {
-        sendEvent(name: 'tamper', value: 'clear', descriptionText: '${device.displayName} tamper cleared')
-        sendEvent(name: 'acceleration', value: 'inactive', descriptionText: "$device.displayName} acceleration is inactive")
-    }
-    if (motionDelayTime == null)  motionDelayTime = "1 minute"
-    if (motionSensitivity == null) motionSensitivity = 3
-    if (reportInterval == null) reportInterval = "5 minutes"
-    if (tempChangeAmount == null) tempChangeAmount = 2
-    if (humidChangeAmount == null) humidChangeAmount = 10
-    if (luxChangeAmount == null) luxChangeAmount = 100
-    if (tempOffset == null) tempOffset = 0
-    if (humidOffset == null) humidOffset = 0
-    if (luxOffset == null) luxOffset = 0
-    state.firmware = 0.0d
-    selectiveReport = selectiveReporting ? 1 : 0
-    if (motionSensitivity < 0) {
-        logDebug "Motion sensitivity too low ... resetting to 0"
-        motionSensitivity = 0
-    } else if (motionSensitivity > 5) {
-        logDebug "Motion sensitivity too high ... resetting to 5"
-        motionSensitivity = 5
-    }
-
-    // fix temp offset
-    if (tempOffset < -128)
-    {
-        tempOffset = -128
-        logDebug "Temperature Offset too low... resetting to -128 (-12.8 degrees)"
-    }
-
-    if (tempOffset > 127)
-    {
-        tempOffset = 127
-        logDebug "Temperature Offset too high ... resetting to 127 (+12.7 degrees)"
-    }
-
-    // fix humidity offset
-    if (humidOffset < -50) {
-        humidOffset = -50
-        logDebug "Humidity calibration too low... resetting to -50"
-    } else if (humidOffset > 50) {
-        humidOffset = 50
-        logDebug "Humidity calibration too high ... resetting to 50"
-    }
-
-    // fix lux offset
-    if (luxOffset < -1000) {
-        luxOffset = -1000
-        logDebug "Luminance calibration too low ... resetting to -1000"
-    } else if (luxOffset > 1000) {
-        luxOffset = 1000
-        logDebug "Luminance calibration too high ... resetting to 1000"
-    }
-
-    logDebug "In configure: Report Interval = $settings.reportInterval"
-    logDebug "Motion Delay Time = $settings.motionDelayTime"
-    logDebug "Motion Sensitivity = $settings.motionSensitivity"
-    logDebug "Temperature adjust = $settings.tempOffset"
-    logDebug "Humidity adjust = $settings.humidOffset"
-    logDebug "Temp Scale = $settings.tempScale"
-    logDebug "Min Temp change for reporting = $settings.tempChangeAmount"
-    logDebug "Min Humidity change for reporting = $settings.humidChangeAmount"
-    logDebug "Min Lux change for reporting = $settings.luxChangeAmount"
-    logDebug "LED Option = $settings.ledOptions"
-
-    def now = new Date()
-    def tf = new java.text.SimpleDateFormat("dd-MMM-yyyy h:mm a")
-    tf.setTimeZone(location.getTimeZone())
-    def newtime = "${tf.format(now)}" as String
-    sendEvent(name: "lastUpdate", value: newtime, descriptionText: "${device.displayName} configured at ${newtime}")
-
-    setConfigured("true")
-    def waketime
-
-    if (timeOptionValueMap[settings.reportInterval] < 300)
-        waketime = timeOptionValueMap[settings.reportInterval]
-    else waketime = 300
-
-    logDebug "wake time reset to $waketime"
-    logDebug "Current firmware: ${sprintf ("%1.2f", state.firmware)}"
-
-    // Retrieve local temperature scale: "C" = Celsius, "F" = Fahrenheit
-    // Convert to a value of 1 or 2 as used by the device to select the scale
-    logDebug "Location temperature scale: ${location.getTemperatureScale()}"
-    byte tempScaleByte = (location.getTemperatureScale() == "C" ? 1 : 2)
-
-    def request = [
-            // set wakeup interval to report time otherwise it doesnt report in time
-            zwave.wakeUpV1.wakeUpIntervalSet(seconds:waketime, nodeid:zwaveHubNodeId),
-
-            zwave.versionV1.versionGet(),
-            zwave.manufacturerSpecificV1.manufacturerSpecificGet(),
-
-            // Hubitat have not yet implemented the firmwareUpdateMdV2 class
-            //zwave.firmwareUpdateMdV2.firmwareMdGet(),
-
-            //1. set association groups for hub
-            zwave.associationV1.associationSet(groupingIdentifier:1, nodeId:zwaveHubNodeId),
-            zwave.associationV1.associationSet(groupingIdentifier:2, nodeId:zwaveHubNodeId),
-
-            //2. automatic report flags
-            // params 101-103 [4 bytes] 128: light sensor, 64 humidity, 32 temperature sensor, 16 ultraviolet sensor, 1 battery sensor -> send command 241 to get all reports
-            zwave.configurationV1.configurationSet(parameterNumber: 101, size: 4, scaledConfigurationValue: 241),   //association group 1 - all reports
-            zwave.configurationV1.configurationSet(parameterNumber: 102, size: 4, scaledConfigurationValue: 1),     //association group 2 - battery report
-
-            //3. no-motion report x seconds after motion stops (default 60 secs)
-            zwave.configurationV1.configurationSet(parameterNumber: 3, size: 2, scaledConfigurationValue: timeOptionValueMap[motionDelayTime] ?: 60),
-
-            //4. motion sensitivity: 0 (least sensitive) - 5 (most sensitive)
-            zwave.configurationV1.configurationSet(parameterNumber: 4, size: 1, scaledConfigurationValue: motionSensitivity),
-
-            //5. report every x minutes (threshold reports don't work on battery power, default 8 mins)
-            zwave.configurationV1.configurationSet(parameterNumber: 111, size: 4, scaledConfigurationValue: timeOptionValueMap[reportInterval]), //association group 1
-
-            // battery report time.. too long at  every 6 hours change to 2 hours.
-            zwave.configurationV1.configurationSet(parameterNumber: 112, size: 4, scaledConfigurationValue: 2*60*60),  //association group 2
-
-            //6. enable/disable selective reporting only on thresholds
-            zwave.configurationV1.configurationSet(parameterNumber: 40, size: 1, scaledConfigurationValue: selectiveReport),
-
-            // Set the temperature scale for automatic reports
-            // US units default to reporting in Fahrenheit, whilst all others default to reporting in Celsius, but we can configure the preferred scale with this setting
-            zwave.configurationV1.configurationSet(parameterNumber: 64, size: 1, configurationValue: [tempScaleByte]),
-
-            // Automatically generate a report when temp changes by specified amount
-            zwave.configurationV1.configurationSet(parameterNumber: 41, size: 4, configurationValue: [0, tempChangeAmount, tempScaleByte, 0]),
-
-            // Automatically generate a report when humidity changes by specified amount
-            zwave.configurationV1.configurationSet(parameterNumber: 42, size: 1, scaledConfigurationValue: humidChangeAmount),
-
-            // Automatically generate a report when lux changes by specified amount
-            zwave.configurationV1.configurationSet(parameterNumber: 43, size: 2, scaledConfigurationValue: luxChangeAmount),
-
-            // send binary sensor report for motion
-            zwave.configurationV1.configurationSet(parameterNumber: 0x05, size: 1, scaledConfigurationValue: 2),
-
-            // Set temperature calibration offset
-            zwave.configurationV1.configurationSet(parameterNumber: 201, size: 2, configurationValue: [tempOffset as int, tempScaleByte]),
-
-            // Set humidity calibration offset
-            zwave.configurationV1.configurationSet(parameterNumber: 202, size: 1, scaledConfigurationValue: humidOffset),
-
-            // Set luminance calibration offset
-            zwave.configurationV1.configurationSet(parameterNumber: 203, size: 2, scaledConfigurationValue: luxOffset),
-
-            // Set LED Option value
-            zwave.configurationV1.configurationSet(parameterNumber: 81, size: 1, configurationValue: [ledOptions]),
-
-            //7. query sensor data
-            zwave.batteryV1.batteryGet(),
-            zwave.sensorBinaryV1.sensorBinaryGet(),
-            zwave.sensorMultilevelV5.sensorMultilevelGet(sensorType: 1), //temperature
-            zwave.sensorMultilevelV5.sensorMultilevelGet(sensorType: 3), //illuminance
-            zwave.sensorMultilevelV5.sensorMultilevelGet(sensorType: 5), //humidity
-            zwave.sensorMultilevelV5.sensorMultilevelGet(sensorType: 27) //ultravioletIndex
-    ]
-    return commands(request) + ["delay 20000", zwave.wakeUpV1.wakeUpNoMoreInformation().format()]
+def zwaveEvent(hubitat.zwave.commands.versionv1.VersionCommandClassReport cmd) {
+	if (debugOutput) log.debug "in version command class report"
+	if (debugOutput) log.debug "---VERSION COMMAND CLASS REPORT V1--- ${device.displayName} has version: ${cmd.commandClassVersion} for command class ${cmd.requestedCommandClass} - payload: ${cmd.payload}"
 }
+
+
+def zwaveEvent(hubitat.zwave.commands.versionv1.VersionReport cmd) {
+	if (debugOutput) log.debug "in version report"
+	// SubVersion is in 1/100ths so that 1.01 < 1.08 < 1.10, etc.//    state.firmware = 0.0d
+	if (cmd.firmware0Version) {
+	    BigDecimal fw = cmd.firmware0Version + (cmd.firmware0SubVersion/100)
+	    state.firmware = fw
+	}
+	if (debugOutput) log.debug "---VERSION REPORT V1--- ${device.displayName} is running firmware version: ${String.format("%1.2f",state.firmware)}, Z-Wave version: ${cmd.zWaveProtocolVersion}.${cmd.zWaveProtocolSubVersion}"
+	if(state.firmware < 1.10)
+	    log.warn "--- WARNING: Device handler expects devices to have firmware 1.10 or later"
+}
+
+
+def zwaveEvent(hubitat.zwave.commands.firmwareupdatemdv2.FirmwareMdReport cmd) {
+	// NOTE: This command class is not yet implemented by Hubitat...
+	if (debugOutput) log.debug "---FIRMWARE METADATA REPORT V2 ${device.displayName}   manufacturerId: ${cmd.manufacturerId}   firmwareId: ${cmd.firmwareId}"
+}
+
+
+private command(hubitat.zwave.Command cmd) {
+	if (state.sec) {
+	    if (debugOutput) log.debug "Sending secure Z-wave command: ${cmd.toString()}"
+	    return zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
+	} else {
+	    if (debugOutput) log.debug "Sending Z-wave command: ${cmd.toString()}"
+	    return cmd.format()
+	}
+}
+
+
+private commands(commands, delay=1000) {
+	//if (descTextEnable) log.info "sending commands: ${commands}"
+	return delayBetween(commands.collect{ command(it) }, delay)
+}
+/*
+	End of Z-Wave Commands
+
+	Beginning of Driver Commands
+
+*/
+def configure(ccc) {
+	if (debugOutput) log.debug "ccc: $ccc"
+	// This sensor joins as a secure device if you double-click the button to include it
+	if (descTextEnable) log.info "${device.displayName} is configuring its settings"
+
+	if (device.currentValue('tamper') == null) {
+	    sendEvent(name: 'tamper', value: 'clear', descriptionText: '${device.displayName} tamper cleared')
+	    sendEvent(name: 'acceleration', value: 'inactive', descriptionText: "$device.displayName} acceleration is inactive")
+	}
+
+	// inputValidationCheck()
+
+	if (debugOutput) {
+			log.debug "Report Interval = $reportInterval"
+			log.debug "Motion Delay Time = $motionDelayTime"
+			log.debug "Motion Sensitivity = $motionSensitivity"
+			log.debug "Temperature adjust = $tempOffset (${tempOffset/10}°)"
+			log.debug "Humidity adjust = $humidOffset"
+			log.debug "Min Temp change for reporting = $tempChangeAmount"
+			log.debug "Min Humidity change for reporting = $humidChangeAmount"
+			log.debug "Min Lux change for reporting = $luxChangeAmount"
+			log.debug "LED Option = $ledOptions"
+	}
+
+	def now = new Date()
+	def tf = new java.text.SimpleDateFormat("dd-MMM-yyyy h:mm a")
+	tf.setTimeZone(location.getTimeZone())
+	def newtime = "${tf.format(now)}" as String
+	sendEvent(name: "lastUpdate", value: newtime, descriptionText: "${device.displayName} configured at ${newtime}")
+
+	setConfigured("true")
+	def waketime
+
+	if (timeOptionValueMap[settings.reportInterval] < 300)
+	    waketime = timeOptionValueMap[settings.reportInterval]
+	else waketime = 300
+
+	if (debugOutput) log.debug "wake time reset to $waketime"
+	if (debugOutput) log.debug "Current firmware: ${sprintf ("%1.2f", state.firmware)}"
+
+	// Retrieve local temperature scale: "C" = Celsius, "F" = Fahrenheit
+	// Convert to a value of 1 or 2 as used by the device to select the scale
+	if (debugOutput) log.debug "Location temperature scale: ${location.getTemperatureScale()}"
+	byte tempScaleByte = (location.getTemperatureScale() == "C" ? 1 : 2)
+
+	def request = [
+	        // set wakeup interval to report time otherwise it doesnt report in time
+	        zwave.wakeUpV1.wakeUpIntervalSet(seconds:waketime, nodeid:zwaveHubNodeId),
+
+	        zwave.versionV1.versionGet(),
+	        zwave.manufacturerSpecificV1.manufacturerSpecificGet(),
+
+	        // Hubitat have not yet implemented the firmwareUpdateMdV2 class
+	        //zwave.firmwareUpdateMdV2.firmwareMdGet(),
+
+	        //1. set association groups for hub
+	        zwave.associationV1.associationSet(groupingIdentifier:1, nodeId:zwaveHubNodeId),
+	        zwave.associationV1.associationSet(groupingIdentifier:2, nodeId:zwaveHubNodeId),
+
+	        //2. automatic report flags
+	        // params 101-103 [4 bytes] 128: light sensor, 64 humidity, 32 temperature sensor, 16 ultraviolet sensor, 1 battery sensor -> send command 241 to get all reports
+	        zwave.configurationV1.configurationSet(parameterNumber: 101, size: 4, scaledConfigurationValue: 241),   //association group 1 - all reports
+	        zwave.configurationV1.configurationSet(parameterNumber: 102, size: 4, scaledConfigurationValue: 1),     //association group 2 - battery report
+
+	        //3. no-motion report x seconds after motion stops (default 60 secs)
+	        zwave.configurationV1.configurationSet(parameterNumber: 3, size: 2, scaledConfigurationValue: timeOptionValueMap[motionDelayTime] ?: 60),
+
+	        //4. motion sensitivity: 0 (least sensitive) - 5 (most sensitive)
+	        zwave.configurationV1.configurationSet(parameterNumber: 4, size: 1, scaledConfigurationValue: motionSensitivity),
+	        //5. report every x minutes (threshold reports don't work on battery power, default 8 mins)
+	        zwave.configurationV1.configurationSet(parameterNumber: 111, size: 4, scaledConfigurationValue: timeOptionValueMap[reportInterval]), //association group 1
+	        // battery report time.. too long at  every 6 hours change to 2 hours.
+	        zwave.configurationV1.configurationSet(parameterNumber: 112, size: 4, scaledConfigurationValue: 2*60*60),  //association group 2
+	        //6. enable/disable selective reporting only on thresholds
+	        zwave.configurationV1.configurationSet(parameterNumber: 40, size: 1, scaledConfigurationValue: selectiveReport),
+	        // Set the temperature scale for automatic reports
+	        // US units default to reporting in Fahrenheit, whilst all others default to reporting in Celsius, but we can configure the preferred scale with this setting
+	        zwave.configurationV1.configurationSet(parameterNumber: 64, size: 1, configurationValue: [tempScaleByte]),
+	        // Automatically generate a report when temp changes by specified amount
+	        zwave.configurationV1.configurationSet(parameterNumber: 41, size: 4, configurationValue: [0, tempChangeAmount, tempScaleByte, 0]),
+	        // Automatically generate a report when humidity changes by specified amount
+	        zwave.configurationV1.configurationSet(parameterNumber: 42, size: 1, scaledConfigurationValue: humidChangeAmount),
+	        // Automatically generate a report when lux changes by specified amount
+	        zwave.configurationV1.configurationSet(parameterNumber: 43, size: 2, scaledConfigurationValue: luxChangeAmount),
+	        // send (1) BasicSet or (2) SensorBinary report for motion
+	        zwave.configurationV1.configurationSet(parameterNumber: 0x05, size: 1, scaledConfigurationValue: 2),
+	        // Set temperature calibration offset
+	        zwave.configurationV1.configurationSet(parameterNumber: 201, size: 2, configurationValue: [tempOffset as int, tempScaleByte]),
+	        // Set humidity calibration offset
+	        zwave.configurationV1.configurationSet(parameterNumber: 202, size: 1, scaledConfigurationValue: humidOffset),
+	        // Set luminance calibration offset
+	        zwave.configurationV1.configurationSet(parameterNumber: 203, size: 2, scaledConfigurationValue: luxOffset),
+	        // Set LED Option value
+	        zwave.configurationV1.configurationSet(parameterNumber: 81, size: 1, configurationValue: [ledOptions]),
+	        //7. query sensor data
+	        zwave.batteryV1.batteryGet(),
+	        zwave.sensorBinaryV1.sensorBinaryGet(),                      //motion
+	        zwave.sensorMultilevelV5.sensorMultilevelGet(sensorType: 1), //temperature
+	        zwave.sensorMultilevelV5.sensorMultilevelGet(sensorType: 3), //illuminance
+	        zwave.sensorMultilevelV5.sensorMultilevelGet(sensorType: 5), //humidity
+	        zwave.sensorMultilevelV5.sensorMultilevelGet(sensorType: 27) //ultravioletIndex
+	]
+	return commands(request) + ["delay 20000", zwave.wakeUpV1.wakeUpNoMoreInformation().format()]
+}
+
 
 def refresh() {
-    logDebug "in refresh"
+	if (debugOutput) log.debug "in refresh"
 
-    return commands([
+	return commands([
             zwave.versionV1.versionGet(),                                // Retrieve version info (includes firmware version)
 //            zwave.firmwareUpdateMdV2.firmwareMdGet(),                  // Command class not implemented by Hubitat yet
             zwave.configurationV1.configurationGet(parameterNumber: 9),  // Retrieve current power mode
@@ -664,107 +614,125 @@ def refresh() {
             zwave.sensorMultilevelV5.sensorMultilevelGet(sensorType: 3), //illuminance
             zwave.sensorMultilevelV5.sensorMultilevelGet(sensorType: 5), //humidity
             zwave.sensorMultilevelV5.sensorMultilevelGet(sensorType: 27) //ultravioletIndex
-    ])
+	])
 }
 
-private def getTimeOptionValueMap() { [
-        "20 seconds" : 20,
-        "30 seconds" : 30,
-        "1 minute"   : 60,
-        "2 minutes"  : 2*60,
-        "3 minutes"  : 3*60,
-        "4 minutes"  : 4*60,
-        "5 minutes"  : 5*60,
-        "10 minutes" : 10*60,
-        "15 minutes" : 15*60,
-        "30 minutes" : 30*60,
-        "1 hour"     : 1*60*60,
-        "6 hours"    : 6*60*60,
-        "12 hours"   : 12*60*60,
-        "18 hours"   : 18*60*60,
-        "24 hours"   : 24*60*60,
+/*
+	Begin support methods
+*/
+
+def motionEvent(value, by) {
+	def map = [name: "motion"]
+	if (value) {
+	    if (descTextEnable) log.info "Motion is active by $by"
+	    map.value = "active"
+	    map.descriptionText = "${device.displayName} motion is active by $by"
+	} else {
+	    if (descTextEnable) log.info "Motion is inactive by $by"
+	    map.value = "inactive"
+	    map.descriptionText = "${device.displayName} motion is inactive by $by"
+	}
+	createEvent(map)
+}
+
+
+def getTimeOptionValueMap() { [
+	"20 seconds" : 20,
+	"30 seconds" : 30,
+	"1 minute"   : 60,
+	"2 minutes"  : 2*60,
+	"3 minutes"  : 3*60,
+	"4 minutes"  : 4*60,
+	"5 minutes"  : 5*60,
+	"10 minutes" : 10*60,
+	"15 minutes" : 15*60,
+	"30 minutes" : 30*60,
+	"1 hour"     : 1*60*60,
+	"6 hours"    : 6*60*60,
+	"12 hours"   : 12*60*60,
+	"18 hours"   : 18*60*60,
+	"24 hours"   : 24*60*60,
 ]}
 
-private setConfigured(configure) {
-    updateDataValue("configured", configure)
+
+// Check for any null settings and change them to default values
+void inputValidationCheck () {
+    
+	selectiveReport = selectiveReporting ? 1 : 0
+
+	motionDelayTime	= motionDelayTime		?: "1 minute"
+	reportInterval	= reportInterval		?: "5 minute"
+	tempChangeAmount	= tempChangeAmount	?: 2
+	humidChangeAmount	= humidChangeAmount	?: 10
+	luxChangeAmount	= luxChangeAmount		?: 100
+	tempOffset		= tempOffset		?: 0
+	ledOptions		= ledOptions		?: 0
+
+	// Validate Input Ranges
+	def motionRange     = 0..5
+	def tempRange       = 0..128
+	def humidRange      = 0..50
+	def luxRange        = 0..1000
+
+	if ( !motionRange.contains(motionSensitivity as int) )  { motionSensitivity = 3 ; log.warn "Selection out of Range: Motion Sensitivity set to 3"; }
+	if ( !tempRange.contains( tempOffset.abs() as int ) )   { tempOffset = 0 ; log.warn "Selection out of Range: Temperature Offset set to 0"; }
+	if ( !humidRange.contains( humidOffset.abs() as int ) ) { humidOffset = 0 ; log.warn "Selection out of Range: Humidity Offset set to 0"; }
+	if ( !luxRange.contains( luxOffset.abs() as int ) )     { luxOffset = 0 ; log.warn "Selection out of Range: Luminance Offset set to 0"; }
 }
+
+
+private setConfigured(configure) {
+	updateDataValue("configured", configure)
+}
+
 
 private isConfigured() {
-    getDataValue("configured") == "true"
-}
-
-private command(hubitat.zwave.Command cmd) {
-    if (state.sec) {
-        logDebug "Sending secure Z-wave command: ${cmd.toString()}"
-        return zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
-    } else {
-        logDebug "Sending Z-wave command: ${cmd.toString()}"
-        return cmd.format()
-    }
-}
-
-private commands(commands, delay=1000) {
-    //if (descTextEnable) log.info "sending commands: ${commands}"
-    return delayBetween(commands.collect{ command(it) }, delay)
+	getDataValue("configured") == "true"
 }
 
 
-def zwaveEvent(hubitat.zwave.commands.versionv1.VersionCommandClassReport cmd) {
-    logDebug "in version command class report"
-    //if (state.debug)
-    logDebug "---VERSION COMMAND CLASS REPORT V1--- ${device.displayName} has version: ${cmd.commandClassVersion} for command class ${cmd.requestedCommandClass} - payload: ${cmd.payload}"
-}
-
-def zwaveEvent(hubitat.zwave.commands.versionv1.VersionReport cmd) {
-    logDebug "in version report"
-    // SubVersion is in 1/100ths so that 1.01 < 1.08 < 1.10, etc.
-    state.firmware = 0.0d
-    if (cmd.firmware0Version) {
-        BigDecimal fw = cmd.firmware0Version + (cmd.firmware0SubVersion/100)
-        state.firmware = fw
-    }
-    logDebug "---VERSION REPORT V1--- ${device.displayName} is running firmware version: ${String.format("%1.2f",state.firmware)}, Z-Wave version: ${cmd.zWaveProtocolVersion}.${cmd.zWaveProtocolSubVersion}"
-    if(state.firmware < 1.10)
-        log.warn "--- WARNING: Device handler expects devices to have firmware 1.10 or later"
-}
-
-def zwaveEvent(hubitat.zwave.commands.firmwareupdatemdv2.FirmwareMdReport cmd) {
-    // NOTE: This command class is not yet implemented by Hubitat...
-    logDebug "---FIRMWARE METADATA REPORT V2 ${device.displayName}   manufacturerId: ${cmd.manufacturerId}   firmwareId: ${cmd.firmwareId}"
+def roundIt( value, decimals=0 ) {
+	return (value == null) ? null : value.toBigDecimal().setScale(decimals, BigDecimal.ROUND_HALF_UP)
 }
 
 
-def initialize() {
-	if (settings.ledOptions == null) settings.ledOptions = 0 // default to Full
+def roundIt( BigDecimal value, decimals=0) {
+	return (value == null) ? null : value.setScale(decimals, BigDecimal.ROUND_HALF_UP)
 }
 
 
-private logDebug(msg) {
-	if (settings?.debugOutput || settings?.debugOutput == null) {
-		log.debug "$msg"
-	}
+def logsOff(){
+	log.warn "debug logging disabled..."
+	device.updateSetting("debugOutput",[value:"false",type:"bool"])
 }
+
+
+def SettingsOff(){
+	log.warn "Settings disabled..."
+	device.updateSetting("settingEnable",[value:"false",type:"bool"])
+}
+
 
 private dbCleanUp() {
-  //  unschedule()
- // clean up state variables that are obsolete
-    state.remove("tempOffset")
-    state.remove("version")
-    state.remove("Version")
-    state.remove("sensorTemp")
-    state.remove("author")
-    state.remove("Copyright")
-    state.remove("verUpdate")
-    state.remove("verStatus")
+	//  unschedule()
+	// clean up state variables that are obsolete
+	state.remove("tempOffset")
+	state.remove("version")
+	state.remove("Version")
+	state.remove("sensorTemp")
+	state.remove("author")
+	state.remove("Copyright")
+	state.remove("verUpdate")
+	state.remove("verStatus")
+	state.remove("Type")
 }
 
 
 // Check Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original code ****
 def updateCheck()
-{	
+{
 	def paramsUD = [uri: "https://hubitatcommunity.github.io/AeotecMultiSensor6/version2.json"]
-	
- 	asynchttpGet("updateCheckHandler", paramsUD) 
+	asynchttpGet("updateCheckHandler", paramsUD) 
 }
 
 
@@ -808,13 +776,6 @@ def updateCheckHandler(resp, data) {
     {
         log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI"
     }
-}
-
-def roundIt( value, decimals=0 ) {
-	return (value == null) ? null : value.toBigDecimal().setScale(decimals, BigDecimal.ROUND_HALF_UP)
-}
-def roundIt( BigDecimal value, decimals=0) {
-    return (value == null) ? null : value.setScale(decimals, BigDecimal.ROUND_HALF_UP)
 }
 
 /*
