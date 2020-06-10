@@ -539,6 +539,7 @@ def configure(ccc) {
 	// Convert to a value of 1 or 2 as used by the device to select the scale
 	if (debugOutput) log.debug "Location temperature scale: ${location.getTemperatureScale()}"
 	byte tempScaleByte = (location.getTemperatureScale() == "C" ? 1 : 2)
+	selectiveReport = selectiveReporting ? 1 : 0
 
 	def request = [
 	        // set wakeup interval to report time otherwise it doesnt report in time
@@ -658,8 +659,6 @@ def getTimeOptionValueMap() { [
 // Check for any null settings and change them to default values
 void inputValidationCheck () {
     
-	selectiveReport = selectiveReporting ? 1 : 0
-
 	motionDelayTime	= motionDelayTime		?: "1 minute"
 	reportInterval	= reportInterval		?: "5 minute"
 	tempChangeAmount	= tempChangeAmount	?: 2
