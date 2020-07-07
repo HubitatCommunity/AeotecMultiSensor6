@@ -589,7 +589,7 @@ def configure(ccc) {
 	        // Set luminance calibration offset
 	        zwave.configurationV1.configurationSet(parameterNumber: 203, size: 2, scaledConfigurationValue: luxOffset),
 	        // Set LED Option value
-	        zwave.configurationV1.configurationSet(parameterNumber: 81, size: 1, configurationValue: [ledOptions]),
+	        zwave.configurationV1.configurationSet(parameterNumber: 81, size: 1, configurationValue: [ledOptions as int]),
 	        //7. query sensor data
 	        zwave.batteryV1.batteryGet(),
 	        zwave.sensorBinaryV1.sensorBinaryGet(),                      //motion
