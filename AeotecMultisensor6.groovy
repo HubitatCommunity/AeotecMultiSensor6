@@ -1,4 +1,4 @@
-/**
+/*
  * IMPORT URL: https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy
  *
  *  Copyright 2015 SmartThings
@@ -13,16 +13,19 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v1.7.1   removed Preference hiding (settingEnable)
+ *                    LED Options reflect firmware v1.3 specs. (On or Off only)
+ *			    Mostion Sensitivity changed to Enum
  *         v1.7     refactored using inputValidationCheck
- *		    	    added de-duplication code for Motion Events (motion Events can occur in <1ms)
+ *                    added de-duplication code for Motion Events (motion Events can occur in <1ms)
  *                    |  Motion reports (unsolicited) are duplicated: a NotificationReport (7) plus either: 
- *			    |    (1) for basicSet; (2) for sensorBinary set via Param 5. 
+ *                    |    (1) for basicSet; (2) for sensorBinary set via Param 5. 
  *                    |  Motion Detection via NotificationReport can be considered a duplicate. 
- *			    |  This version removes motion event processing from NotificationReport relying
+ *                    |  This version removes motion event processing from NotificationReport relying
  *                    |    on basicSet or SensorBinary.
  *                    |  Added detail to Motion is... to identify the path.
- *		    	    removed duplicate call to config()
- *			    lots of cosmetic formatting cleanup, cosmetic reordering of modules 
+ *                    removed duplicate call to config()
+ *                    lots of cosmetic formatting cleanup, cosmetic reordering of modules 
  *
  *         v1.6.13  version report NPE (thanks Christi999)
  *		    	    tempOffset to "as Int"
@@ -90,7 +93,7 @@
    15. support for celsius added. set in input options.
 */
 
- public static String version()      {  return "v1.7"  }
+ public static String version()      {  return "v1.7.1"  }
 
 metadata {
     definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy") {
@@ -114,39 +117,35 @@ metadata {
         fingerprint deviceId: "0x2101", inClusters: "0x5E,0x86,0x72,0x59,0x85,0x73,0x71,0x84,0x80,0x30,0x31,0x70,0x7A", outClusters: "0x5A"
     }
     
-    if (settingEnable==null) settingEnable = 'true' 
-    def settingDescr = settingEnable ? "<br><i>Hide many of the Preferences to reduce the clutter, if needed, by turning OFF this toggle.</i><br>" : "<br><i>Many Preferences are available to you, if needed, by turning ON this toggle.</i><br>"
 
     preferences {
-
         // Note: Hubitat doesn't appear to honour 'sections' in device handler preferences just now, but hopefully one day...
         section("Motion sensor settings") {
-            if (settingEnable)  input "motionDelayTime", "enum", title: "<b>Motion Sensor Delay Time?</b>",
+            input "motionDelayTime", "enum", title: "<b>Motion Sensor Delay Time?</b>",
                                       options: ["20 seconds", "30 seconds", "1 minute", "2 minutes", "3 minutes", "4 minutes"], defaultValue: "1 minute", displayDuringSetup: true
-            input "motionSensitivity", "number", title: "<b>Motion Sensor Sensitivity?</b>", description: "<br><i> 0(min)..5(max)</i><br>", range: "0..5", defaultValue: 5, displayDuringSetup: true
+            input "motionSensitivity", "enum", title: "<b>Motion Sensor Sensitivity?</b>", options: [5:"Very High", 4:"High", 3:"Medium High", 2:"Medium", 1:"Low"], defaultValue: 5, displayDuringSetup: true
         }
 
         section("Automatic report settings") {
-            if (settingEnable)  input "reportInterval", "enum", title: "<b>Sensors Report Interval?</b>",
+            input "reportInterval", "enum", title: "<b>Sensors Report Interval?</b>",
                                       options: ["20 seconds", "30 seconds", "1 minute", "2 minutes", "3 minutes", "4 minutes", "5 minutes", "10 minutes", "15 minutes", "30 minutes", "1 hour", "6 hours", "12 hours", "18 hours", "24 hours"], defaultValue: "5 minutes", displayDuringSetup: true
-            if (settingEnable)  input "tempChangeAmount", "number", title: "<b>Temperature Change Amount (Tenths of a degree)?</b>", range: "1..70", description: "<br><i>The tenths of degrees the temperature must change to induce an automatic report.</i><br>", defaultValue: 2, required: false
-            if (settingEnable)  input "humidChangeAmount", "number", title: "<b>Humidity Change Amount (%)?</b>", range: "1..100", description: "<br><i>The percentage the humidity must change to induce an automatic report.</i><br>", defaultValue: 10, required: false
+            input "tempChangeAmount", "number", title: "<b>Temperature Change Amount (Tenths of a degree)?</b>", range: "1..70", description: "<br><i>The tenths of degrees the temperature must change to induce an automatic report.</i><br>", defaultValue: 2, required: false
+            input "humidChangeAmount", "number", title: "<b>Humidity Change Amount (%)?</b>", range: "1..100", description: "<br><i>The percentage the humidity must change to induce an automatic report.</i><br>", defaultValue: 10, required: false
             input "luxChangeAmount", "number", title: "<b>Luminance Change Amount (LUX)?</b>", range: "-1000..1000", description: "<br><i>The amount of LUX the luminance must change to induce an automatic report.</i><br>", defaultValue: 100, required: false
         }
 
         section("Calibration settings") {
             input "tempOffset", "number", title: "<b>Temperature Offset?</b>", range: "-127..128", description: "<br><i> -128 to +127 (Tenths of a degree)<br>If your temperature is inaccurate this will offset/adjust it by this many tenths of a degree.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
-            if (settingEnable)  input "humidOffset", "number", title: "<b>Humidity Offset/Adjustment -50 to +50 in percent?</b>", range: "-50..50", description: "<br><i>If your humidity is inaccurate this will offset/adjust it by this percent.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
-            if (settingEnable)  input "luxOffset", "number", title: "<b>Luminance Offset/Adjustment -10 to +10 in LUX?</b>", range: "-10..10", description: "<br><i>If your luminance is inaccurate this will offset/adjust it by this percent.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
+            input "humidOffset", "number", title: "<b>Humidity Offset/Adjustment -50 to +50 in percent?</b>", range: "-50..50", description: "<br><i>If your humidity is inaccurate this will offset/adjust it by this percent.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
+            input "luxOffset", "number", title: "<b>Luminance Offset/Adjustment -10 to +10 in LUX?</b>", range: "-10..10", description: "<br><i>If your luminance is inaccurate this will offset/adjust it by this percent.</i><br>", defaultValue: 0, required: false, displayDuringSetup: true
         }
 
-        if (settingEnable)  input "ledOptions", "enum", title: "<b>LED Options</b>",
-                                  options: [0:"Fully Enabled", 1:"Disable When Motion", 2:"Fully Disabled"], defaultValue: "0", displayDuringSetup: true
-        if (settingEnable)  input name: "selectiveReporting", type: "bool", title: "<b>Enable Selective Reporting?</b>", defaultValue: false
+        input "ledOptions", "enum", title: "<b>LED Options</b>",
+                                      options: [0:"Fully Enabled", 1:"Fully Disabled", 2:"Disable When Motion (Aeon v1.10 only)"], defaultValue: "0", displayDuringSetup: true
+        input name: "selectiveReporting", type: "bool", title: "<b>Enable Selective Reporting?</b>", defaultValue: false
 
-        input name: "settingEnable", type: "bool", title: "<b>Display All Preferences</b>", description: "<br><i>Many Preferences are available to you, if needed, by turning ON this toggle.</i><br>", defaultValue: true, submitOnChange: true
         input name: "debugOutput",   type: "bool", title: "<b>Enable debug logging?</b>",   description: "<br>", defaultValue: true
-	  input name: "descTextEnable", type: "bool", title: "<b>Enable descriptionText logging?</b>", defaultValue: true
+        input name: "descTextEnable", type: "bool", title: "<b>Enable descriptionText logging?</b>", defaultValue: true
     }
 }
 
@@ -164,7 +163,6 @@ def updated() {
     dbCleanUp()		// remove antique db entries created in older versions and no longer used.
     schedule("0 0 8 ? * FRI *", updateCheck)
     if (debugOutput) runIn(1800,logsOff)
-    if (settingEnable) runIn(2100,SettingsOff)
     runIn(20, updateCheck) 
 
     // Check for any null settings and change them to default values
@@ -564,7 +562,7 @@ def configure(ccc) {
 	        zwave.configurationV1.configurationSet(parameterNumber: 3, size: 2, scaledConfigurationValue: timeOptionValueMap[motionDelayTime] ?: 60),
 
 	        //4. motion sensitivity: 0 (least sensitive) - 5 (most sensitive)
-	        zwave.configurationV1.configurationSet(parameterNumber: 4, size: 1, scaledConfigurationValue: motionSensitivity),
+	        zwave.configurationV1.configurationSet(parameterNumber: 4, size: 1, scaledConfigurationValue: motionSensitivity as int),
 	        //5. report every x minutes (threshold reports don't work on battery power, default 8 mins)
 	        zwave.configurationV1.configurationSet(parameterNumber: 111, size: 4, scaledConfigurationValue: timeOptionValueMap[reportInterval]), //association group 1
 	        // battery report time.. too long at  every 6 hours change to 2 hours.
@@ -658,7 +656,8 @@ def getTimeOptionValueMap() { [
 
 // Check for any null settings and change them to default values
 void inputValidationCheck () {
-    
+
+	motionSensitivity	= motionSensitivity	?: 0
 	motionDelayTime	= motionDelayTime		?: "1 minute"
 	reportInterval	= reportInterval		?: "5 minute"
 	tempChangeAmount	= tempChangeAmount	?: 2
@@ -706,21 +705,14 @@ def logsOff(){
 }
 
 
-def SettingsOff(){
-	log.warn "Settings disabled..."
-	device.updateSetting("settingEnable",[value:"false",type:"bool"])
-}
-
-
 private dbCleanUp() {
-	//  unschedule()
 	// clean up state variables that are obsolete
-	state.remove("tempOffset")
-	state.remove("version")
-	state.remove("Version")
-	state.remove("sensorTemp")
-	state.remove("author")
-	state.remove("Copyright")
+//	state.remove("tempOffset")
+//	state.remove("version")
+//	state.remove("Version")
+//	state.remove("sensorTemp")
+//	state.remove("author")
+//	state.remove("Copyright")
 	state.remove("verUpdate")
 	state.remove("verStatus")
 	state.remove("Type")
@@ -783,10 +775,10 @@ def updateCheckHandler(resp, data) {
 	Version progression of 1.4.9 to 1.4.10 would mis-compare unless each duple is padded first.
 
 */ 
-def padVer(ver) {
+String padVer(ver) {
 	def pad = ""
 	ver.replaceAll( "[vV]", "" ).split( /\./ ).each { pad += it.padLeft( 2, '0' ) }
 	return pad
 }
 
-def getThisCopyright(){"&copy; 2019 C Steele "}
+String getThisCopyright(){"&copy; 2019 C Steele "}
