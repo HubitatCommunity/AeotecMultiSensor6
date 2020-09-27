@@ -1,0 +1,16 @@
+{
+  "packageName": "AeotecMultiSensor6",
+  "author": "csteele",
+  "version": "2.00",
+  "minimumHEVersion": "2.0.0",
+  "dateReleased": "2020-09-22",
+  "drivers": [
+    {
+      "id": "41a8de23-9da5-4204-9048-d8038fe21dc4",
+      "name": "AeotecMultiSensor6",
+      "namespace": "cSteele",
+      "location": "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultiSensor6.groovy",
+      "required": false
+    }
+  ]
+}
