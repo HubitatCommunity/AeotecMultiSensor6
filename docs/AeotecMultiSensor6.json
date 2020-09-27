@@ -8,9 +8,13 @@
     {
       "id": "41a8de23-9da5-4204-9048-d8038fe21dc4",
       "name": "AeotecMultiSensor6",
+      "category": "Control",
+    "tags": [ "Lights & Switches" ],
       "namespace": "cSteele",
       "location": "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultiSensor6.groovy",
-      "required": false
+      "required": true,
+    "oauth": false,
+      "description": "A more preference filled alternative to the Built-In driver."
     }
   ]
 }
