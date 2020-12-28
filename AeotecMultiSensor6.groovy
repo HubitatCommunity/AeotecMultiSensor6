@@ -13,11 +13,14 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
- *         v2.0.0   Converted to Hubitat Security method for S2+S0 This device still only offers unsecure or S0.
+ *         v2.0.1   Added in optional Param Set / Get commands.
+ *                    Added Fingerprint for this device type. 
+ *                    Added Limit Check on Temp, Illuminance, Humitity and UV values for wildly out of range cases. 
+ *         v2.0.0   Converted to Hubitat Security method [zwaveSecureEncap()] for S2+S0 This device still only offers unsecure or S0.
  *
  *         v1.7.1   removed Preference hiding (settingEnable)
  *                    LED Options reflect firmware v1.3 specs. (On or Off only)
- *			    Mostion Sensitivity changed to Enum
+ *                    Mostion Sensitivity changed to Enum
  *         v1.7     refactored using inputValidationCheck
  *                    added de-duplication code for Motion Events (motion Events can occur in <1ms)
  *                    |  Motion reports (unsolicited) are duplicated: a NotificationReport (7) plus either: 
@@ -95,7 +98,8 @@
    15. support for celsius added. set in input options.
 */
 
- public static String version()      {  return "v2.0.0"  }
+ public static String version()      {  return "v2.0.1"  }
+import groovy.transform.Field
 
 metadata {
     definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy") {
@@ -112,11 +116,14 @@ metadata {
         capability "TamperAlert"
 
         command    "refresh"
-	  // command    "updateCheck"			// **---** delete for Release
+	  // command    "updateCheck"			// **---** delete these for Release
+        command "getParameterReport", [[name:"parameterNumber",type:"NUMBER", description:"Parameter Number (omit for a complete listing of parameters that have been set)", constraints:["NUMBER"]]]
+        command "setParameter",[[name:"parameterNumber",type:"NUMBER", description:"Parameter Number", constraints:["NUMBER"]],[name:"size",type:"NUMBER", description:"Parameter Size", constraints:["NUMBER"]],[name:"value",type:"NUMBER", description:"Parameter Value", constraints:["NUMBER"]]]
 
         attribute  "firmware", "decimal"
 
         fingerprint deviceId: "0x2101", inClusters: "0x5E,0x86,0x72,0x59,0x85,0x73,0x71,0x84,0x80,0x30,0x31,0x70,0x7A", outClusters: "0x5A"
+        fingerprint  mfr:"0086", prod:"0102", deviceId:"0064", inClusters:"0x5E,0x86,0x72,0x59,0x85,0x73,0x71,0x84,0x80,0x30,0x31,0x70,0x7A,0x5A" 
     }
     
 
@@ -158,31 +165,31 @@ metadata {
 	When "Save Preferences" gets clicked...
 */
 def updated() {
-    if (debugOutput) log.debug "In Updated with settings: ${settings}"
-    if (debugOutput) log.debug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
-    unschedule()
-    initialize()
-    dbCleanUp()		// remove antique db entries created in older versions and no longer used.
-    schedule("0 0 8 ? * FRI *", updateCheck)
-    if (debugOutput) runIn(1800,logsOff)
-    runIn(20, updateCheck) 
-
-    // Check for any null settings and change them to default values
-    inputValidationCheck()
-
-    if (device.latestValue("powerSource") == "dc") {  //case1: USB powered
-      //  response(configure(2))
-    	} else if (device.latestValue("powerSource") == "battery") {  //case2: battery powered
-    	    // setConfigured("false") is used by WakeUpNotification
-    	    setConfigured("false") //wait until the next time device wakeup to send configure command after user change preference
-    	    selectiveReport = 0 // battery, selective reporting is not supported
-    	} else { //case3: power source is not identified, ask user to properly pair the sensor again
-    	    log.warn "power source is not identified, check that sensor is powered by USB, if so > configure()"
-    	    def request = []
-   	    request << zwave.configurationV1.configurationGet(parameterNumber: 9)  // Retrieve current power mode
-    	    response(commands(request))
-    }
-    return(configure(1))
+	if (debugOutput) log.debug "In Updated with settings: ${settings}"
+	if (debugOutput) log.debug "${device.displayName} is now on ${device.latestValue("powerSource")} power"
+	unschedule()
+	initialize()
+	dbCleanUp()		// remove antique db entries created in older versions and no longer used.
+	schedule("0 0 8 ? * FRI *", updateCheck)
+	if (debugOutput) runIn(1800,logsOff)
+	runIn(20, updateCheck) 
+	
+	// Check for any null settings and change them to default values
+	inputValidationCheck()
+	
+	if (device.latestValue("powerSource") == "dc") {  //case1: USB powered
+	  //  response(configure(2))
+		} else if (device.latestValue("powerSource") == "battery") {  //case2: battery powered
+		    // setConfigured("false") is used by WakeUpNotification
+		    setConfigured("false") //wait until the next time device wakeup to send configure command after user change preference
+		    selectiveReport = 0 // battery, selective reporting is not supported
+		} else { //case3: power source is not identified, ask user to properly pair the sensor again
+		    log.warn "power source is not identified, check that sensor is powered by USB, if so > configure()"
+		    def request = []
+		    request << zwave.configurationV1.configurationGet(parameterNumber: 9)  // Retrieve current power mode
+		    response(commands(request))
+	}
+	return(configure(1))
 }
 
 
@@ -220,7 +227,6 @@ void installed()
 {
 	initialize()
 }
-
 
 
 /*
@@ -307,6 +313,7 @@ def zwaveEvent(hubitat.zwave.commands.batteryv1.BatteryReport cmd) {
 	createEvent(map)
 }
 
+@Field static Map<String, Map> LIMIT_VALUES = [ tempC: [upper: 100, lower: -40], tempF: [upper: 212, Lower: -40], lux: [upper: 30000, lower: 0], rh: [upper: 100, lower: 0], uv: [upper: 11, lower: 1]]
 
 def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport cmd){
 	if (debugOutput) log.debug "In multi level report cmd = $cmd"
@@ -316,12 +323,11 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
 	switch (cmd.sensorType) {
 	    case 1:
 	        if (debugOutput) log.debug "raw temp = $cmd.scaledSensorValue"
+	        if ((cmd.scale == 1 && (cmd.scaledSensorValue >= LIMIT_VALUES.tempF.upper || cmd.scaledSensorValue < LIMIT_VALUES.tempF.lower)) || (cmd.scale == 0 && (cmd.scaledSensorValue >= LIMIT_VALUES.tempC.upper || cmd.scaledSensorValue < LIMIT_VALUES.tempC.lower))) return
 	        // Convert temperature (if needed) to the system's configured temperature scale
-	        def finalval = convertTemperatureIfNeeded(cmd.scaledSensorValue, cmd.scale == 1 ? "F" : "C", cmd.precision)
+	        map.value = convertTemperatureIfNeeded(cmd.scaledSensorValue, cmd.scale == 1 ? "F" : "C", cmd.precision)
+	        if (debugOutput) log.debug "finalval = $map.value"
 
-	        if (debugOutput) log.debug "finalval = $finalval"
-
-	        map.value = finalval
 	        map.unit = "\u00b0" + getTemperatureScale()
 	        map.name = "temperature"
 	        map.descriptionText = "${device.displayName} temperature is ${map.value}${map.unit}"
@@ -329,6 +335,7 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
 	        break
 	    case 3:
 	        if (debugOutput) log.debug "raw illuminance = $cmd.scaledSensorValue"
+	        if (cmd.scaledSensorValue >= LIMIT_VALUES.lux.upper || cmd.scaledSensorValue < LIMIT_VALUES.lux.lower) return
 	        map.name = "illuminance"
 	        map.value = cmd.scaledSensorValue.toInteger() // roundIt((cmd.scaledSensorValue / 2.0),0) as Integer // .toInteger()
 	        map.unit = "lux"
@@ -337,6 +344,7 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
 	        break
 	    case 5:
 	        if (debugOutput) log.debug "raw humidity = $cmd.scaledSensorValue"
+	        if (cmd.scaledSensorValue >= LIMIT_VALUES.rh.upper || cmd.scaledSensorValue < LIMIT_VALUES.rh.lower) return
 	        map.value = roundIt(cmd.scaledSensorValue, 0) as Integer     // .toInteger()
 	        map.unit = "%"
 	        map.name = "humidity"
@@ -345,10 +353,11 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
 	        break
 	    case 27:
 	        if (debugOutput) log.debug "raw uv index = $cmd.scaledSensorValue"
+	        if (cmd.scaledSensorValue >= LIMIT_VALUES.uv.upper || cmd.scaledSensorValue < LIMIT_VALUES.uv.lower) return
 	        map.name = "ultravioletIndex"
 	        map.value = roundIt(cmd.scaledSensorValue, 0) as Integer    // .toInteger()
 	        map.descriptionText = "${device.displayName} ultraviolet index is ${map.value}"
-	    if (descTextEnable) log.info "Ultraviolet index is ${map.value}"
+	        if (descTextEnable) log.info "Ultraviolet index is ${map.value}"
 	        break
 	    default:
 	        map.descriptionText = cmd.toString()
@@ -471,6 +480,16 @@ private commands(commands, delay=1000) {
 	return delayBetween(commands.collect{ command(it) }, delay)
 }
 
+String secureCmd(cmd) {
+	if (getDataValue("zwaveSecurePairingComplete") == "true" && getDataValue("S2") == null) {
+		return zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
+	} else {
+		return secure(cmd)
+	}	
+}
+
+String secure(String cmd) { return zwaveSecureEncap(cmd) }
+String secure(hubitat.zwave.Command cmd) { return zwaveSecureEncap(cmd) }
 
 /*
 	End of Z-Wave Commands
@@ -703,6 +722,38 @@ private dbCleanUp() {
 	state.remove("verStatus")
 	state.remove("Type")
 }
+
+List<String> setParameter(parameterNumber = null, size = null, value = null){
+	if (parameterNumber == null || size == null || value == null) {
+		log.warn "incomplete parameter list supplied..."
+		log.info "syntax: setParameter(parameterNumber,size,value)"
+	} else {
+		return delayBetween([
+	    	secureCmd(zwave.configurationV1.configurationSet(scaledConfigurationValue: value, parameterNumber: parameterNumber, size: size)),
+	    	secureCmd(zwave.configurationV1.configurationGet(parameterNumber: parameterNumber))
+		],500)
+	}
+}
+
+List<String> getParameterReport(param = null){
+	if (!debugOutput) {
+		log.warn "debug logging auto-enabled..."
+		device.updateSetting("debugOutput",[value:"true",type:"bool"])
+		runIn(1800,logsOff)
+	}
+	
+	List<String> cmds = []
+	if (param != null) {
+		cmds = [secureCmd(zwave.configurationV1.configurationGet(parameterNumber: param))]
+	} else {
+		0.upto(255, {
+	   	cmds.add(secureCmd(zwave.configurationV1.configurationGet(parameterNumber: it)))	
+		})
+	}
+	log.trace "configurationGet command(s) ($param) sent..."
+	return delayBetween(cmds,500)
+}	
+
 
 
 // Check Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original code ****
