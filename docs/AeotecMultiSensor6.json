@@ -2,8 +2,8 @@
   "packageName": "AeotecMultiSensor6",
   "author": "CSteele",
   "version": "2.0.0",
-  "minimumHEVersion": "2.0.0",
-  "dateReleased": "2020-09-22",
+  "minimumHEVersion": "2.0.1",
+  "dateReleased": "2020-12-28",
   "category": "Control",
   "tags": "Lights & Switches",
   "drivers": [
