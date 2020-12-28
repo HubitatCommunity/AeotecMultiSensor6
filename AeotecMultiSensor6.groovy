@@ -313,7 +313,7 @@ def zwaveEvent(hubitat.zwave.commands.batteryv1.BatteryReport cmd) {
 	createEvent(map)
 }
 
-@Field static Map<String, Map> LIMIT_VALUES = [ tempC: [upper: 100, lower: -40], tempF: [upper: 212, Lower: -40], lux: [upper: 30000, lower: 0], rh: [upper: 100, lower: 0], uv: [upper: 11, lower: 1]]
+@Field static Map<String, Map> LIMIT_VALUES = [ tempC: [upper: 100, lower: -40], tempF: [upper: 212, lower: -40], lux: [upper: 30000, lower: 0], rh: [upper: 100, lower: 0], uv: [upper: 11, lower: 1]]
 
 def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport cmd){
 	if (debugOutput) log.debug "In multi level report cmd = $cmd"
