@@ -16,6 +16,7 @@
  *         v2.0.1   Added in optional Param Set / Get commands.
  *                    Added Fingerprint for this device type. 
  *                    Added Limit Check on Temp, Illuminance, Humitity and UV values for wildly out of range cases. 
+ *                    Integrated portions of basicZWaveTool (2020-08-14 maxwell & Copyright 2016 -> 2020 Hubitat Inc.  All Rights Reserved)
  *         v2.0.0   Converted to Hubitat Security method [zwaveSecureEncap()] for S2+S0 This device still only offers unsecure or S0.
  *
  *         v1.7.1   removed Preference hiding (settingEnable)
