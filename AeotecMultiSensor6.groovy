@@ -324,7 +324,8 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
 	switch (cmd.sensorType) {
 	    case 1:
 	        if (debugOutput) log.debug "raw temp = $cmd.scaledSensorValue"
-	        if ((cmd.scale == 1 && (cmd.scaledSensorValue >= LIMIT_VALUES.tempF.upper || cmd.scaledSensorValue < LIMIT_VALUES.tempF.lower)) || (cmd.scale == 0 && (cmd.scaledSensorValue >= LIMIT_VALUES.tempC.upper || cmd.scaledSensorValue < LIMIT_VALUES.tempC.lower))) return
+	        if (cmd.scale == 1) { if ((cmd.scaledSensorValue > LIMIT_VALUES.tempF.upper) || (cmd.scaledSensorValue < LIMIT_VALUES.tempF.lower)) { return } }
+	        if (cmd.scale == 0) { if ((cmd.scaledSensorValue > LIMIT_VALUES.tempC.upper) || (cmd.scaledSensorValue < LIMIT_VALUES.tempC.lower)) { return } }
 	        // Convert temperature (if needed) to the system's configured temperature scale
 	        map.value = convertTemperatureIfNeeded(cmd.scaledSensorValue, cmd.scale == 1 ? "F" : "C", cmd.precision)
 	        if (debugOutput) log.debug "finalval = $map.value"
