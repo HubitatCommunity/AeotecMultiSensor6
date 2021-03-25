@@ -1,8 +1,8 @@
 {
   "packageName": "AeotecMultiSensor6",
-  "releaseNotes": "v2.0.1   Added in optional Param Set / Get commands.\n *       Added Fingerprint for this device type.\n *       Added Limit Check on Temp, Illuminance, Humitity and UV values for wildly out of range cases.\n *       Integrated portions of basicZWaveTool"
-  "documentationLink": "https://github.com/HubitatCommunity/AeotecMultiSensor6/blob/master/README.md"
-  "communityLink": "https://community.hubitat.com/t/aeotec-multisensor-6/1204/20"
+  "releaseNotes": "v2.0.1   Added in optional Param Set / Get commands.\n *       Added Fingerprint for this device type.\n *       Added Limit Check on Temp, Illuminance, Humitity and UV values for wildly out of range cases.\n *       Integrated portions of basicZWaveTool",
+  "documentationLink": "https://github.com/HubitatCommunity/AeotecMultiSensor6/blob/master/README.md",
+  "communityLink": "https://community.hubitat.com/t/aeotec-multisensor-6/1204/20",
   "author": "CSteele",
   "version": "2.0.1",
   "minimumHEVersion": "2.0.1",
