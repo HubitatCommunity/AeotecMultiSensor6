@@ -6,6 +6,6 @@
 	},
 	"driver": {
                 "AeotecMultiSensor6":  {"ver": "1.7.1", "updated": "08/16/2020"},
-		"AeotecMultiSensor6_2":  {"ver": "2.0.1", "updated": "12/28/2020"}
+		"AeotecMultiSensor6_2":  {"ver": "2.0.2", "updated": "07/21/2021"}
 	}
 }
