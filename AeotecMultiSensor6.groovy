@@ -13,6 +13,8 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
+ *         v2.0.2   Extended Motion Sensitivity to allow 0 (zero) which might be "off" depending on firmware.
+ *
  *         v2.0.1   Added in optional Param Set / Get commands.
  *                    Added Fingerprint for this device type. 
  *                    Added Limit Check on Temp, Illuminance, Humitity and UV values for wildly out of range cases. 
@@ -99,8 +101,8 @@
    15. support for celsius added. set in input options.
 */
 
- public static String version()      {  return "v2.0.1"  }
-import groovy.transform.Field
+ public static String version()      {  return "v2.0.2"  }
+ import groovy.transform.Field
 
 metadata {
     definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy") {
@@ -133,7 +135,7 @@ metadata {
         section("Motion sensor settings") {
             input "motionDelayTime", "enum", title: "<b>Motion Sensor Delay Time?</b>",
                                       options: ["20 seconds", "30 seconds", "1 minute", "2 minutes", "3 minutes", "4 minutes"], defaultValue: "1 minute", displayDuringSetup: true
-            input "motionSensitivity", "enum", title: "<b>Motion Sensor Sensitivity?</b>", options: [5:"Very High", 4:"High", 3:"Medium High", 2:"Medium", 1:"Low"], defaultValue: 5, displayDuringSetup: true
+            input "motionSensitivity", "enum", title: "<b>Motion Sensor Sensitivity?</b>", options: [5:"Very High", 4:"High", 3:"Medium High", 2:"Medium", 1:"Low", 0:"Off"], defaultValue: 5, displayDuringSetup: true
         }
 
         section("Automatic report settings") {
