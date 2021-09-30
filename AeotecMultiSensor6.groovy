@@ -1,5 +1,5 @@
 /*
- * IMPORT URL: https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy
+ * IMPORT URL: https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultiSensor6.groovy
  *
  *  Copyright 2015 SmartThings
  *
