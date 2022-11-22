@@ -8,7 +8,11 @@
   "minimumHEVersion": "2.0.1",
   "dateReleased": "2021-07-21",
   "category": "Control",
-  "tags": "Lights & Switches",
+  "tags": [
+        "ZWave",
+	"Lights & Switches",
+        "Multi Sensors"
+  ],
   "drivers": [
     {
       "id": "41a8de23-9da5-4204-9048-d8038fe21dc4",
