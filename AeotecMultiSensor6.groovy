@@ -1,5 +1,5 @@
 /*
- * IMPORT URL: https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultiSensor6.groovy
+ * IMPORT URL: https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy
  *
  *  Copyright 2015 SmartThings
  *
@@ -13,8 +13,11 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *
- *         v2.0.2   Extended Motion Sensitivity to allow 0 (zero) which might be "off" depending on firmware.
+ *         v2.1.0   Added in optional Auto No Motion timer.
+ *                    Remove UpdateCheck, rely on HPM to check for a new version.
+ *                    Refactor methods using createEvent to use sendEvent.
  *
+ *         v2.0.2   Extended Motion Sensitivity to allow 0 (zero) which might be "off" depending on firmware.
  *         v2.0.1   Added in optional Param Set / Get commands.
  *                    Added Fingerprint for this device type. 
  *                    Added Limit Check on Temp, Illuminance, Humitity and UV values for wildly out of range cases. 
@@ -101,11 +104,11 @@
    15. support for celsius added. set in input options.
 */
 
- public static String version()      {  return "v2.0.2"  }
+ public static String version()      {  return "v2.1.0"  }
  import groovy.transform.Field
 
 metadata {
-    definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultiSensor6.groovyy") {
+    definition (name: "AeotecMultiSensor6", namespace: "cSteele", author: "cSteele", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultisensor6.groovy") {
         capability "Motion Sensor"
         capability "Temperature Measurement"
         capability "Relative Humidity Measurement"
@@ -119,16 +122,15 @@ metadata {
         capability "TamperAlert"
 
         command    "refresh"
-	  // command    "updateCheck"			// **---** delete these for Release
-        command "getParameterReport", [[name:"parameterNumber",type:"NUMBER", description:"Parameter Number (omit for a complete listing of parameters that have been set)", constraints:["NUMBER"]]]
-        command "setParameter",[[name:"parameterNumber",type:"NUMBER", description:"Parameter Number", constraints:["NUMBER"]],[name:"size",type:"NUMBER", description:"Parameter Size", constraints:["NUMBER"]],[name:"value",type:"NUMBER", description:"Parameter Value", constraints:["NUMBER"]]]
+        command    "getParameterReport", [[name:"parameterNumber",type:"NUMBER", description:"Parameter Number (omit for a complete listing of parameters that have been set)", constraints:["NUMBER"]]]
+        command    "setParameter",[[name:"parameterNumber",type:"NUMBER", description:"Parameter Number", constraints:["NUMBER"]],[name:"size",type:"NUMBER", description:"Parameter Size", constraints:["NUMBER"]],[name:"value",type:"NUMBER", description:"Parameter Value", constraints:["NUMBER"]]]
 
         attribute  "firmware", "decimal"
 
         fingerprint deviceId: "0x2101", inClusters: "0x5E,0x86,0x72,0x59,0x85,0x73,0x71,0x84,0x80,0x30,0x31,0x70,0x7A", outClusters: "0x5A"
         fingerprint  mfr:"0086", prod:"0102", deviceId:"0064", inClusters:"0x5E,0x86,0x72,0x59,0x85,0x73,0x71,0x84,0x80,0x30,0x31,0x70,0x7A,0x5A" 
     }
-    
+
 
     preferences {
         // Note: Hubitat doesn't appear to honour 'sections' in device handler preferences just now, but hopefully one day...
@@ -155,6 +157,8 @@ metadata {
         input "ledOptions", "enum", title: "<b>LED Options</b>",
                                       options: [0:"Fully Enabled", 1:"Fully Disabled", 2:"Disable When Motion (Aeon v1.10 only)"], defaultValue: "0", displayDuringSetup: true
         input name: "selectiveReporting", type: "bool", title: "<b>Enable Selective Reporting?</b>", defaultValue: false
+        input "autoInactive", "enum", title: "<b>Auto Inactive</b>", description: "<br><i>Choose to automatically turn off Motion (inactive) after a period of time.</i><br>", 
+                                      options: [0:"Disable",  2:"2 minutes", 5:"5 minutes", 10:"10 minutes", 20:"20 minutes", 40:"40 minutes", 60: "1 hour"], defaultValue: "0", displayDuringSetup: true
 
         input name: "debugOutput",   type: "bool", title: "<b>Enable debug logging?</b>",   description: "<br>", defaultValue: true
         input name: "descTextEnable", type: "bool", title: "<b>Enable descriptionText logging?</b>", defaultValue: true
@@ -164,7 +168,7 @@ metadata {
 
 /*
 	updated
-    
+
 	When "Save Preferences" gets clicked...
 */
 def updated() {
@@ -173,13 +177,11 @@ def updated() {
 	unschedule()
 	initialize()
 	dbCleanUp()		// remove antique db entries created in older versions and no longer used.
-	schedule("0 0 8 ? * FRI *", updateCheck)
 	if (debugOutput) runIn(1800,logsOff)
-	runIn(20, updateCheck) 
-	
+
 	// Check for any null settings and change them to default values
 	inputValidationCheck()
-	
+
 	if (device.latestValue("powerSource") == "dc") {  //case1: USB powered
 	  //  response(configure(2))
 		} else if (device.latestValue("powerSource") == "battery") {  //case2: battery powered
@@ -198,7 +200,7 @@ def updated() {
 
 /*
 	parse
-    
+
 	Respond to received zwave commands.
 */
 def parse(String description) {
@@ -206,7 +208,7 @@ def parse(String description) {
 	def result = null
 	if (description.startsWith("Err 106")) {
 	    log.warn "parse() >> Err 106"
-	    result = createEvent( name: "secureInclusion", value: "failed",
+	    result = sendEvent( name: "secureInclusion", value: "failed",
 	                         descriptionText: "This sensor (${device.displayName}) failed to complete the network security key exchange. If you are unable to control it via Hubitat, you must remove it from your network and add it again.")
 	} else if (description != "updated") {
 	    // log.debug "About to zwave.parse($description)"
@@ -223,7 +225,7 @@ def parse(String description) {
 
 /*
 	installed
-    
+
 	Doesn't do much other than call initialize().
 */
 void installed()
@@ -234,12 +236,13 @@ void installed()
 
 /*
 	initialize
-    
+
 	Doesn't do much.
 */
 def initialize() {
 	if (settings.ledOptions == null) settings.ledOptions = 0 // default to Full
 	state.firmware = state.firmware ?: 0.0d
+	state.Copyright = "${thisCopyright} -- ${version()}"
 }
 
 
@@ -249,7 +252,7 @@ def initialize() {
 
 //this notification will be sent only when device is battery powered
 def zwaveEvent(hubitat.zwave.commands.wakeupv1.WakeUpNotification cmd) {
-	def result = [createEvent(descriptionText: "${device.displayName} woke up")]
+	def result = [sendEvent(descriptionText: "${device.displayName} woke up")]
 	def cmds = []
 	if (!isConfigured()) {
 	    if (debugOutput) log.debug("late configure")
@@ -271,7 +274,7 @@ def zwaveEvent(hubitat.zwave.commands.securityv1.SecurityMessageEncapsulation cm
 	    zwaveEvent(encapsulatedCommand)
 	} else {
 	    log.warn "Unable to extract encapsulated cmd from $cmd"
-	    createEvent(descriptionText: cmd.toString())
+	    sendEvent(descriptionText: cmd.toString())
 	}
 }
 
@@ -304,17 +307,13 @@ def zwaveEvent(hubitat.zwave.commands.manufacturerspecificv1.ManufacturerSpecifi
 
 def zwaveEvent(hubitat.zwave.commands.batteryv1.BatteryReport cmd) {
 	if (debugOutput) log.debug "In BatteryReport $cmd"
-	def result = []
-	def map = [ name: "battery", unit: "%" ]
 	if (cmd.batteryLevel == 0xFF) {
-	    map.value = 1
-	    map.descriptionText = "${device.displayName} battery is low"
+	    sendEvent(name: "battery", unit: "%", value: 1, descriptionText: "${device.displayName} battery is low")
 	} else {
-	    map.value = cmd.batteryLevel
-	    map.descriptionText = "${device.displayName} battery is ${map.value}%"
+        sendEvent(name: "battery", unit: "%", value: cmd.batteryLevel.toInteger(), descriptionText: "${device.displayName} battery is ${cmd.batteryLevel}%")
 	}
-	createEvent(map)
 }
+
 
 @Field static Map<String, Map> LIMIT_VALUES = [ tempC: [upper: 100, lower: -40], tempF: [upper: 212, lower: -40], lux: [upper: 30000, lower: 0], rh: [upper: 100, lower: 0], uv: [upper: 11, lower: 1]]
 
@@ -366,7 +365,7 @@ def zwaveEvent(hubitat.zwave.commands.sensormultilevelv5.SensorMultilevelReport 
 	    default:
 	        map.descriptionText = cmd.toString()
 	}
-	createEvent(map)
+	sendEvent(map)
 }
 
 
@@ -389,29 +388,29 @@ def zwaveEvent(hubitat.zwave.commands.notificationv3.NotificationReport cmd) {
 	    switch (cmd.event) {
 	        case 0:
 	        //  spec says this is 'clear previous alert'
-	            //sendEvent(name: "contact", value: "closed", descriptionText: "$device.displayName is closed", displayed: true)
-	     //       result << motionEvent(0, "NotificationReport")  // see Change Note for v1.7
-	            result << createEvent(name: "tamper", value: "clear", descriptionText: "${device.displayName} tamper cleared", displayed: true)
+	        //  sendEvent(name: "contact", value: "closed", descriptionText: "$device.displayName is closed", displayed: true)
+	        //  result << motionEvent(0, "NotificationReport")  // see Change Note for v1.7
+	            result << sendEvent(name: "tamper", value: "clear", descriptionText: "${device.displayName} tamper cleared", displayed: true)
 	            if (descTextEnable) log.info "Tamper cleared by NotificationReport"
-	            result << createEvent(name: "acceleration", value: "inactive", descriptionText: "${device.displayName} acceleration is inactive", displayed: true)
+	            result << sendEvent(name: "acceleration", value: "inactive", descriptionText: "${device.displayName} acceleration is inactive", displayed: true)
 	            if (descTextEnable) log.info "Acceleration is inactive by NotificationReport"
 	            break
 	        case 3:
 	        //  spec says this is 'tamper'
 	            //sendEvent(name: "contact", value: "open", descriptionText: "$device.displayName is open", displayed: true)
-	            result << createEvent(name: "tamper", value: "detected", descriptionText: "${device.displayName} tamper detected", displayed: true)
+	            result << sendEvent(name: "tamper", value: "detected", descriptionText: "${device.displayName} tamper detected", displayed: true)
 	            if (descTextEnable) log.info "Tamper detected"
-	            result << createEvent(name: "acceleration", value: "active", descriptionText: "${device.displayName} acceleration is active", displayed: true)
+	            result << sendEvent(name: "acceleration", value: "active", descriptionText: "${device.displayName} acceleration is active", displayed: true)
 	            if (descTextEnable) log.info "Acceleration is active"
 	            break
 	        case 8:
 	        //  spec says this is 'unknown motion detection'
-	      //      result << motionEvent(1, "NotificationReport")  // see Change Note for v1.7
+	        //  result << motionEvent(1, "NotificationReport")  // see Change Note for v1.7
 	            break
 	    }
 	} else {
 	    log.warn "Need to handle this cmd.notificationType: ${cmd.notificationType}"
-	    result << createEvent(descriptionText: cmd.toString())
+	    result << sendEvent(descriptionText: cmd.toString())
 	}
 	result
 }
@@ -427,12 +426,12 @@ def zwaveEvent(hubitat.zwave.commands.configurationv1.ConfigurationReport cmd) {
 	        if (debugOutput) log.debug("Configuration Report: configuring device")
 	        result << response(configure(4))
 	    }
-	    result << createEvent(name: "powerSource", value: value, descriptionText: "${device.displayName} power source is dc (mains)", displayed: false)
+	    result << sendEvent(name: "powerSource", value: value, descriptionText: "${device.displayName} power source is dc (mains)", displayed: false)
 	    if (descTextEnable) log.info "Power source is DC (mains)"
 	}
 	else if (cmd.parameterNumber == 9 && cmd.configurationValue[0] == 1) {
 	    value = "battery"
-	    result << createEvent(name: "powerSource", value: value, descriptionText: "${device.displayName} power source is battery", displayed: false)
+	    result << sendEvent(name: "powerSource", value: value, descriptionText: "${device.displayName} power source is battery", displayed: false)
 	    if (descTextEnable) log.info "Power source is battery"
 	} 
 	else if (cmd.parameterNumber == 101){
@@ -444,7 +443,7 @@ def zwaveEvent(hubitat.zwave.commands.configurationv1.ConfigurationReport cmd) {
 
 def zwaveEvent(hubitat.zwave.Command cmd) {
 	if (debugOutput) log.debug "General zwaveEvent cmd: ${cmd}"
-	createEvent(descriptionText: cmd.toString(), isStateChange: false)
+	sendEvent(descriptionText: cmd.toString(), isStateChange: false)
 }
 
 
@@ -484,6 +483,7 @@ private commands(commands, delay=1000) {
 	return delayBetween(commands.collect{ command(it) }, delay)
 }
 
+
 String secureCmd(cmd) {
 	if (getDataValue("zwaveSecurePairingComplete") == "true" && getDataValue("S2") == null) {
 		return zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
@@ -492,8 +492,10 @@ String secureCmd(cmd) {
 	}	
 }
 
+
 String secure(String cmd) { return zwaveSecureEncap(cmd) }
 String secure(hubitat.zwave.Command cmd) { return zwaveSecureEncap(cmd) }
+
 
 /*
 	End of Z-Wave Commands
@@ -630,17 +632,27 @@ def refresh() {
 */
 
 def motionEvent(value, by) {
-	def map = [name: "motion"]
 	if (value) {
 	    if (descTextEnable) log.info "Motion is active by $by"
-	    map.value = "active"
-	    map.descriptionText = "${device.displayName} motion is active by $by"
+	    sendEvent(name: "motion", value: "active", descriptionText: "${device.displayName} motion is active by $by", isStateChange:true)
+	    if (autoInactive > "0") {
+	    	    def delay = autoInactive.toInteger() * 60
+	    	    runIn(delay, motionInactivate)
+	    }
 	} else {
 	    if (descTextEnable) log.info "Motion is inactive by $by"
-	    map.value = "inactive"
-	    map.descriptionText = "${device.displayName} motion is inactive by $by"
+	    sendEvent(name: "motion", value: "inactive", descriptionText: "${device.displayName} motion is inactive by $by", isStateChange:true)
+	    unschedule(motionInactivate)
 	}
-	createEvent(map)
+}
+
+
+/*
+	Auto reset motion to inactive after timeout period.
+*/
+def motionInactivate() {
+	if (descTextEnable) log.info "Motion is inactive by Time Out"
+	sendEvent(name: "motion", value: "inactive", descriptionText: "${device.displayName} motion is inactive by Time Out")
 }
 
 
@@ -725,6 +737,9 @@ private dbCleanUp() {
 	state.remove("verUpdate")
 	state.remove("verStatus")
 	state.remove("Type")
+	state.remove("Status")
+	state.remove("InternalName")
+	state.remove("UpdateInfo")
 }
 
 List<String> setParameter(parameterNumber = null, size = null, value = null){
@@ -745,7 +760,7 @@ List<String> getParameterReport(param = null){
 		device.updateSetting("debugOutput",[value:"true",type:"bool"])
 		runIn(1800,logsOff)
 	}
-	
+
 	List<String> cmds = []
 	if (param != null) {
 		cmds = [secureCmd(zwave.configurationV1.configurationGet(parameterNumber: param))]
@@ -758,68 +773,5 @@ List<String> getParameterReport(param = null){
 	return delayBetween(cmds,500)
 }	
 
-
-
-// Check Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original code ****
-def updateCheck()
-{
-	def paramsUD = [uri: "https://hubitatcommunity.github.io/AeotecMultiSensor6/version2.json"]
-	asynchttpGet("updateCheckHandler", paramsUD) 
-}
-
-
-def updateCheckHandler(resp, data) {
-
-	state.InternalName = "AeotecMultiSensor6_2"
-
-	if (resp.getStatus() == 200 || resp.getStatus() == 207) {
-		respUD = parseJson(resp.data)
-		// log.warn " Version Checking - Response Data: $respUD"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
-		state.Copyright = "${thisCopyright} -- ${version()}"
-		// uses reformattted 'version2.json' 
-		def newVer = padVer(respUD.driver.(state.InternalName).ver)
-		def currentVer = padVer(version())               
-		state.UpdateInfo = (respUD.driver.(state.InternalName).updated)
-            // log.debug "updateCheck: ${respUD.driver.(state.InternalName).ver}, $state.UpdateInfo, ${respUD.author}"
-
-		switch(newVer) {
-			case { it == "NLS"}:
-			      state.Status = "<b>** This Driver is no longer supported by ${respUD.author}  **</b>"       
-			      if (descTextEnable) log.warn "** This Driver is no longer supported by ${respUD.author} **"      
-				break
-			case { it > currentVer}:
-			      state.Status = "<b>New Version Available (Version: ${respUD.driver.(state.InternalName).ver})</b>"
-			      if (descTextEnable) log.warn "** There is a newer version of this Driver available  (Version: ${respUD.driver.(state.InternalName).ver}) **"
-			      if (descTextEnable) log.warn "** $state.UpdateInfo **"
-				break
-			case { it < currentVer}:
-			      state.Status = "<b>You are using a Test version of this Driver (Expecting: ${respUD.driver.(state.InternalName).ver})</b>"
-			      if (descTextEnable) log.warn "You are using a Test version of this Driver (Expecting: ${respUD.driver.(state.InternalName).ver})"
-				break
-			default:
-				state.Status = "Current"
-				if (descTextEnable) log.info "You are using the current version of this driver"
-				break
-		}
- 	sendEvent(name: "chkUpdate", value: state.UpdateInfo)
-	sendEvent(name: "chkStatus", value: state.Status)
-    }
-    else
-    {
-        log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI"
-    }
-}
-
-/*
-	padVer
-
-	Version progression of 1.4.9 to 1.4.10 would mis-compare unless each duple is padded first.
-
-*/ 
-String padVer(ver) {
-	def pad = ""
-	ver.replaceAll( "[vV]", "" ).split( /\./ ).each { pad += it.padLeft( 2, '0' ) }
-	return pad
-}
 
 String getThisCopyright(){"&copy; 2019 C Steele "}
