@@ -17,7 +17,7 @@
     {
       "id": "41a8de23-9da5-4204-9048-d8038fe21dc4",
       "name": "AeotecMultiSensor6",
-      "namespace": "csteele",
+      "namespace": "cSteele",
       "location": "https://raw.githubusercontent.com/HubitatCommunity/AeotecMultiSensor6/master/AeotecMultiSensor6.groovy",
       "required": true,
 	"oauth": false,
